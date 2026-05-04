@@ -1,0 +1,97 @@
+farmers:
+- id: Cranky Haslett_f0
+  location: !!python/tuple
+  - -0.6947408097672393
+  - 102.47927746489405
+  quantity: 2.0
+- id: Cranky Haslett_f1
+  location: !!python/tuple
+  - -0.6902272067449126
+  - 102.47703148668248
+  quantity: 1.9
+- id: Cranky Haslett_f2
+  location: !!python/tuple
+  - -0.7015153737338184
+  - 102.47703976163176
+  quantity: 0.6
+- id: Cranky Haslett_f3
+  location: !!python/tuple
+  - -0.6789487732035684
+  - 102.46356717130892
+  quantity: 0.6
+- id: Cranky Haslett_f4
+  location: !!python/tuple
+  - -0.6766959440500572
+  - 102.45683740898174
+  quantity: 1.2
+- id: Cranky Haslett_f5
+  location: !!python/tuple
+  - -0.7037696350139145
+  - 102.48152680458607
+  quantity: 2.4
+- id: Eager Panini_f0
+  location: !!python/tuple
+  - -0.4441407676033299
+  - 102.48585477708657
+  quantity: 2.0
+- id: Stoic Pasteur_f0
+  location: !!python/tuple
+  - -0.37642044578386363
+  - 102.46564226126956
+  quantity: 2.0
+- id: Bold Merkle_f0
+  location: !!python/tuple
+  - -0.3786889109870971
+  - 102.43873158218342
+  quantity: 2.0
+- id: Crazy Lewin_f0
+  location: !!python/tuple
+  - -0.5819076193740553
+  - 102.40070609439614
+  quantity: 2.0
+intermediaries:
+- capacity: 9
+  id: Cranky Haslett
+  location: !!python/tuple
+  - -0.6976743457221327
+  - 102.48571045984048
+  routes:
+  - Cranky Haslett_f0
+  - Cranky Haslett_f1
+  - Cranky Haslett_f2
+  - Cranky Haslett_f3
+  - Cranky Haslett_f4
+  - Cranky Haslett_f5
+- capacity: 9
+  id: Eager Panini
+  location: !!python/tuple
+  - -0.4946094485720386
+  - 102.5015354875169
+  routes:
+  - Eager Panini_f0
+- capacity: 9
+  id: Stoic Pasteur
+  location: !!python/tuple
+  - -0.44688990231582204
+  - 102.41408964194967
+  routes:
+  - Stoic Pasteur_f0
+- capacity: 9
+  id: Bold Merkle
+  location: !!python/tuple
+  - -0.3924687505560577
+  - 102.43444003030714
+  routes:
+  - Bold Merkle_f0
+- capacity: 9
+  id: Crazy Lewin
+  location: !!python/tuple
+  - -0.5921836868296243
+  - 102.46276065941728
+  routes:
+  - Crazy Lewin_f0
+mills:
+- id: SKIP
+  location: !!python/tuple
+  - -0.682643
+  - 102.501522
