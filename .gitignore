@@ -106,3 +106,35 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# --- Data files (added) ---
+# Raw / processed datasets
+data/
+datasets/
+*.csv
+*.tsv
+*.json
+*.jsonl
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# Large binary / scientific data
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# Model artifacts (optional, but often treated as data)
+*.model
+*.ckpt
+*.pt
+*.pth
+
+# Compressed archives (often used for datasets)
+*.zip
+*.tar
+*.gz
+*.bz2
+*.xz

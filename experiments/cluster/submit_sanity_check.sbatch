@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --job-name=pricing_sc
+#SBATCH --array=0-195
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+#SBATCH --output=%x_%a.out
+#SBATCH --error=%x_%a.err
+
+# Load required modules
+ml gurobi/11.0.2
+ml python/3.12
+
+# cd to repo root (wherever sbatch was submitted from)
+cd $SLURM_SUBMIT_DIR
+
+source .venv/bin/activate
+
+# Run experiment for this array index
+python3 experiments/sanity_check.py $SLURM_ARRAY_TASK_ID
