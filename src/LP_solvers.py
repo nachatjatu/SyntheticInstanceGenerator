@@ -122,8 +122,8 @@ class VRPSolver:
             A :class:`Matching` object describing the chosen routes.
         """
         model = gp.Model("VRP")
-        # Bound time limit for the solver to 5 minutes
-        model.setParam('TimeLimit', 300)
+        # Bound time limit for the solver to 60 minutes
+        model.setParam('TimeLimit', 3600)
 
         # Add binary variables for each farmer and intermediary
         farmer_ids = [farmer.id for farmer in self.instance.farmers]
