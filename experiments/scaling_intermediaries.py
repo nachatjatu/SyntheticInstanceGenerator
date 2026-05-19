@@ -31,7 +31,7 @@ set_reproducible_state(n_id)
 # =========================
 # CONFIG
 # =========================
-N_INTS_LIST = [10, 20, 30, 40, 50, 60, 70]
+N_INTS_LIST = [10, 15, 20, 25, 30, 35, 40]
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
 RESULTS_PATH = f"data/results_scaling_farmers/{n_id}.json"
