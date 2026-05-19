@@ -227,7 +227,7 @@ class InstanceGenerator:
         return np.array(locs), qs
     
 
-    def gen_instance(self, instance_id, write=True, plot=True):
+    def gen_instance(self, instance_id, write=True, plot=True, scale_factor=1.0):
         """
         Orchestrates full instance generation and saves to YAML.
         
@@ -243,6 +243,8 @@ class InstanceGenerator:
         for int_id, int_data in self.ints.items():
             int_type, int_xy, int_ll = int_data['type'], int_data['xy'], int_data['ll']
             n_farmers = np.random.choice(self.hist_n_farmers[int_type])
+
+            n_farmers = int(np.ceil(n_farmers * scale_factor)) # scale
             
             if n_farmers > 0:
                 s_val = self.sigmas.get(int_type, 5000)
@@ -347,14 +349,13 @@ class InstanceGenerator:
             plt.scatter(ix, iy, color=color, marker='s', s=120, edgecolors='k', zorder=9, label=intermediary['id'])
 
             # Farmer markers and lines
-            for f_id in intermediary['routes']:
+            for f_id in intermediary['routes'][0]:
                 farmer = farmer_lookup[f_id]
                 fx, fy = self.ll_to_xy.transform(farmer['location'][1], farmer['location'][0])
                 
                 plt.scatter(fx, fy, color=color, s=40, edgecolors='white', zorder=8)
                 plt.plot([ix, fx], [iy, fy], color=color, lw=1.5, alpha=0.6, zorder=7)
 
-        plt.title(f"Supply Chain Generation in [Riau](hovercard{{place_id:ChIJdz6xGVhXJy4Rsb21bJQCb4M}}), Indonesia\nKDE Prior + Road Network")
         plt.xlabel("Easting (m)")
         plt.ylabel("Northing (m)")
         plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1))

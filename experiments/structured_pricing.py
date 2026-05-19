@@ -3,6 +3,7 @@ import json
 import pickle
 import numpy as np
 import pandas as pd
+import random
 
 sys.path.insert(0, "src")
 
@@ -19,13 +20,19 @@ if len(sys.argv) != 2:
     raise ValueError("Please provide n_id as a single argument.")
 
 n_id = int(sys.argv[1])
-np.random.seed(n_id)
+
+
+def set_reproducible_state(seed_val):
+    np.random.seed(seed_val)
+    random.seed(seed_val)
+    
+set_reproducible_state(n_id)
 
 
 # =========================
 # CONFIG
 # =========================
-SIM_SIZE = 1
+SIM_SIZE = 10
 N_INTS = 10
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
@@ -117,7 +124,7 @@ def run_single_simulation(instance_dict, platform):
     sampled_epsilon = np.random.choice([0,1,2,3,4,5,6,7,8,9])
 
     epsilon = {int.id: sampled_epsilon for int in platform.intermediaries}
-    
+
     het_costs = reset_fixed_costs(platform)
 
     parameters = {

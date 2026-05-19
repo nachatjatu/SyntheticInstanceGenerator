@@ -21,7 +21,6 @@ if len(sys.argv) != 2:
 
 n_id = int(sys.argv[1])
 
-
 def set_reproducible_state(seed_val):
     np.random.seed(seed_val)
     random.seed(seed_val)
@@ -32,11 +31,10 @@ set_reproducible_state(n_id)
 # =========================
 # CONFIG
 # =========================
-SIM_SIZE = 100
-N_INTS = 10
+N_INTS_LIST = [10, 20, 30, 40, 50, 60, 70]
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
-RESULTS_PATH = f"data/results_sc/{n_id}.json"
+RESULTS_PATH = f"data/results_scaling_ints/{n_id}.json"
 
 FARMERS_PATH = "data/farmers.csv"
 INTS_PATH = "data/ints.csv"
@@ -58,46 +56,13 @@ instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
 
 
 # =========================
-# STOCHASTIC COMPONENTS
-# =========================
-def reset_quantities(platform):
-    return {
-        farmer.id: min(
-            max(
-                np.floor((farmer.quantity + np.random.uniform(-0.5, 0.5)) * 10) / 10,
-                0.1,
-            ),
-            9.0,
-        )
-        for farmer in platform.farmers
-    }
-
-
-def reset_fixed_costs(platform):
-    return {
-        intermediary.id: (
-            platform.dist_to_mill[intermediary.id] * 4
-            + np.random.normal(0, 100000)
-        )
-        for intermediary in platform.intermediaries
-    }
-
-
-def sample_epsilon(platform):
-    return {
-        intermediary.id: np.random.uniform(0, 6.0)
-        for intermediary in platform.intermediaries
-    }
-
-
-# =========================
 # CORE BUILDERS
 # =========================
-def build_instance(instance_id):
+def build_instance(instance_id, n_ints):
     """
     Generate a fresh instance and attach the road graph.
     """
-    instance_generator.gen_ints(N_INTS)
+    instance_generator.gen_ints(n_ints)
 
     instance_dict = instance_generator.gen_instance(
         instance_id,
@@ -110,25 +75,27 @@ def build_instance(instance_id):
 
     return platform, instance_dict
 
+def reset_fixed_costs(platform):
+    return {
+        intermediary.id: (
+            platform.dist_to_mill[intermediary.id] * 4
+            + np.random.normal(0, 100000)
+        )
+        for intermediary in platform.intermediaries
+    }
 
-def apply_quantity_perturbation(instance_dict, platform):
-    """
-    Rebuild platform with perturbed quantities.
-    """
-    quantities = reset_quantities(platform)
-    return Instance.from_dict(instance_dict, opt_quantities=quantities)
 
 
 def run_single_simulation(instance_dict, platform):
     """
     Runs one optimization on a (possibly perturbed) platform.
     """
-    # Apply stochastic elements
-    platform = apply_quantity_perturbation(instance_dict, platform)
-
     platform.set_graph(RoadGraph(GRAPH))
 
-    epsilon = sample_epsilon(platform)
+    sampled_epsilon = np.random.choice([0,1,2,3,4,5,6,7,8,9])
+
+    epsilon = {int.id: sampled_epsilon for int in platform.intermediaries}
+
     het_costs = reset_fixed_costs(platform)
 
     parameters = {
@@ -137,24 +104,34 @@ def run_single_simulation(instance_dict, platform):
         "het_costs": het_costs,
     }
 
-    optimizer = Optimizer(platform, parameters)
+    opt = Optimizer(platform, parameters)
+    base_matchings = opt.base_matchings
 
-    summary = optimizer.solve(
-        "heuristic_optimized",
-        options={
-            "structured_farmer_prices": False,
-            "domination": False,
-        },
-    )
+    summary_vanilla = opt.solve("heuristic_optimized", options={
+        "structured_farmer_prices": False,
+        "domination": False,})
+    
+    opt = Optimizer(platform, parameters, base_matchings=base_matchings)
+    
+    summary_structured = opt.solve("heuristic_optimized", options={
+        "structured_farmer_prices": True,
+        "domination": False,})
+    
+    opt = Optimizer(platform, parameters, base_matchings=base_matchings)
+    
+    summary_domination = opt.solve("heuristic_optimized", options={
+        "structured_farmer_prices": False,
+        "domination": True,})
 
-    # Collect outputs
     return {
-        "epsilon": epsilon,
         "cost": het_costs,
+        "epsilon": epsilon,
         "farmer_quantities": {f.id: f.quantity for f in platform.farmers},
-        "summary_vanilla": summary.to_dict(),
+        "summary_vanilla": summary_vanilla.to_dict(),
+        "summary_structured": summary_structured.to_dict(),
+        "summary_domination": summary_domination.to_dict(),
         "farmer_dirt_to_mill": {f.id: f.dirt_to_mill for f in platform.farmers},
-        "farmer_paved_to_mill": {f.id: f.paved_to_mill for f in platform.farmers},
+        "famer_paved_to_mill": {f.id: f.paved_to_mill for f in platform.farmers},
     }
 
 
@@ -175,36 +152,28 @@ def convert(obj):
 # MAIN EXPERIMENT LOOP
 # =========================
 def main():
-    results = []
+    n_ints_idx = (n_id - 1) % len(N_INTS_LIST)
+    selected_n_ints = N_INTS_LIST[n_ints_idx]
 
-    print(f"Starting experiment batch n_id={n_id}")
+    print(f"Starting task n_id={n_id} with N_INTS={selected_n_ints}")
 
-    for sim_n in range(SIM_SIZE):
-        print(f"--- Simulation {sim_n + 1}/{SIM_SIZE} ---")
+    instance_id = n_id
 
-        instance_id = f"{n_id}_{sim_n}"
+    platform, instance_dict = build_instance(instance_id, selected_n_ints)
 
-        # Build new instance (between-instance variation)
-        platform, instance_dict = build_instance(instance_id)
+    sim_result = run_single_simulation(instance_dict, platform)
 
-        # Run one stochastic solve
-        sim_result = run_single_simulation(instance_dict, platform)
+    # Add metadata
+    sim_result.update({
+        "instance_id": instance_id,
+        "n_id": n_id,
+        "n_ints": selected_n_ints,
+    })
 
-        # Add metadata
-        sim_result.update({
-            "instance_id": instance_id,
-            "n_id": n_id,
-            "sim_n": sim_n,
-        })
-
-        results.append(sim_result)
-
-        print(f"Completed simulation {sim_n}")
-        print()
 
     # Save results
     with open(RESULTS_PATH, "w") as f:
-        json.dump(results, f, indent=4, default=convert)
+        json.dump(sim_result, f, indent=4, default=convert)
 
     print(f"Results saved to {RESULTS_PATH}")
 
