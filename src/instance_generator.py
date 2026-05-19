@@ -244,7 +244,9 @@ class InstanceGenerator:
             int_type, int_xy, int_ll = int_data['type'], int_data['xy'], int_data['ll']
             n_farmers = np.random.choice(self.hist_n_farmers[int_type])
 
-            n_farmers = int(np.ceil(n_farmers * scale_factor)) # scale
+            raw_n = n_farmers * scale_factor
+
+            n_farmers = int(np.floor(raw_n) + (np.random.rand() < (raw_n % 1)))
             
             if n_farmers > 0:
                 s_val = self.sigmas.get(int_type, 5000)

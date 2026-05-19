@@ -31,14 +31,16 @@ set_reproducible_state(n_id)
 # =========================
 # CONFIG
 # =========================
-N_INTS_LIST = [10, 20, 30, 40, 50, 60, 70]
+SCALE_FACTORS_LIST = [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3]
+N_INTS = 15
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
-RESULTS_PATH = f"data/results_scaling_farmers/{n_id}.json"
+RESULTS_PATH = f"data/results_scaling_ints/{n_id}.json"
 
 FARMERS_PATH = "data/farmers.csv"
 INTS_PATH = "data/ints.csv"
 MILLS_PATH = "data/mills.csv"
+
 
 
 # =========================
@@ -58,22 +60,24 @@ instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
 # =========================
 # CORE BUILDERS
 # =========================
-def build_instance(instance_id, n_ints):
+def build_instance(instance_id, scale_factor):
     """
     Generate a fresh instance and attach the road graph.
     """
-    instance_generator.gen_ints(n_ints)
+    instance_generator.gen_ints(N_INTS)
 
     instance_dict = instance_generator.gen_instance(
         instance_id,
         write=False,
         plot=False,
+        scale_factor=scale_factor
     )
 
     platform = Instance.from_dict(instance_dict)
     platform.set_graph(RoadGraph(GRAPH))
 
     return platform, instance_dict
+
 
 def reset_fixed_costs(platform):
     return {
@@ -152,14 +156,14 @@ def convert(obj):
 # MAIN EXPERIMENT LOOP
 # =========================
 def main():
-    n_ints_idx = (n_id - 1) % len(N_INTS_LIST)
-    selected_n_ints = N_INTS_LIST[n_ints_idx]
+    scaling_factor_idx = (n_id - 1) % len(SCALE_FACTORS_LIST)
+    selected_scale_factor = SCALE_FACTORS_LIST[scaling_factor_idx]
 
-    print(f"Starting task n_id={n_id} with N_INTS={selected_n_ints}")
+    print(f"Starting task n_id={n_id} with scale_factor={selected_scale_factor}")
 
     instance_id = n_id
 
-    platform, instance_dict = build_instance(instance_id, selected_n_ints)
+    platform, instance_dict = build_instance(instance_id, selected_scale_factor)
 
     sim_result = run_single_simulation(instance_dict, platform)
 
@@ -167,7 +171,7 @@ def main():
     sim_result.update({
         "instance_id": instance_id,
         "n_id": n_id,
-        "n_ints": selected_n_ints,
+        "scale_factor": selected_scale_factor,
     })
 
 
