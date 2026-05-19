@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=scaling_ints
+#SBATCH --job-name=scaling_farmers
 #SBATCH --array=0-195
 #SBATCH --time=04:00:00
 #SBATCH --mem=16G
@@ -16,4 +16,4 @@ cd $SLURM_SUBMIT_DIR
 source .venv/bin/activate
 
 # Run experiment for this array index
-python3 experiments/scaling_intermediaries.py $SLURM_ARRAY_TASK_ID
+python3 experiments/scaling_farmers.py $SLURM_ARRAY_TASK_ID

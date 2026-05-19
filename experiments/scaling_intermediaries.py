@@ -131,7 +131,7 @@ def run_single_simulation(instance_dict, platform):
         "summary_structured": summary_structured.to_dict(),
         "summary_domination": summary_domination.to_dict(),
         "farmer_dirt_to_mill": {f.id: f.dirt_to_mill for f in platform.farmers},
-        "famer_paved_to_mill": {f.id: f.paved_to_mill for f in platform.farmers},
+        "farmer_paved_to_mill": {f.id: f.paved_to_mill for f in platform.farmers},
     }
 
 

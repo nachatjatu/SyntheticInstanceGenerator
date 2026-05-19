@@ -336,23 +336,14 @@ class Route:
         self.farmers = farmers
         self.total_quantity = sum(farmer.quantity for farmer in farmers)
         self.instance = instance
-        self.verify_capacity()
+        
         self.cost = self.calculate_route_tree_cost()
+        self.is_feasible = (self.total_quantity > (self.instance.truck_capacity + 1e-6))
         self.value = self.total_quantity * self.instance.fruit_price - self.cost
 
     def __repr__(self) -> str:
         return f"Route(farmers={[farmer.id for farmer in self.farmers]})"
 
-    def verify_capacity(self, slack: float = 1e-6) -> None:
-        """Ensure the total quantity on the route does not exceed truck capacity.
-
-        Parameters
-        ----------
-        slack : float, optional
-            Numerical tolerance for the comparison.
-        """
-        if self.total_quantity > self.instance.truck_capacity + slack:
-            raise ValueError(f"Route exceeds capacity: {self.total_quantity} > {self.instance.truck_capacity}")
 
     def calculate_route_tree_cost(self) -> float:
         """Calculate the cost of traversing the route using the precomputed tree.

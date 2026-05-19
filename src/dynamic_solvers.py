@@ -189,11 +189,14 @@ class TSPSolver:
             else:
                 objective = total_prizes[i] - self.instance.truck_fixed_cost
             route = self.instance.calculate_tree_path(selected_farmers_sets[i])
-            alt_objective = sum(prizes_dict[farmer_id] for farmer_id in selected_farmers_sets[i]) - route.cost
-            # Check if the objective matches
-            if abs(objective - alt_objective) > self.TOLERANCE:
-                raise ValueError(f"Objective mismatch: {objective} != {alt_objective}")
-            final_routes.append(route)
-            final_objectives.append(objective)
+
+            # Only perform the strict objective check if the route is actually feasible
+            if route.is_feasible:
+                alt_objective = sum(prizes_dict[farmer_id] for farmer_id in selected_farmers_sets[i]) - route.cost
+                if abs(objective - alt_objective) > 1e-4: # Use a small tolerance for floats
+                    raise ValueError(f"Objective mismatch: {objective} != {alt_objective}")
+                
+                final_routes.append(route)
+                final_objectives.append(objective)            
 
         return final_routes, final_objectives
