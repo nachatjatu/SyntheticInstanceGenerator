@@ -8,6 +8,7 @@ via dual/primal models.  Most of the heavy lifting is done by
 :class:`Optimizer`.
 """
 
+import os
 from farmers_intermediaries import Instance, Route, Farmer, Matching
 import gurobipy as gp
 import pickle
@@ -18,6 +19,17 @@ from dynamic_solvers import TSPSolver as dynamic_TSPSolver
 import numpy as np
 import json
 from itertools import combinations
+
+def get_solver_threads() -> int:
+    for var in ("SLURM_CPUS_PER_TASK", "GUROBI_THREADS"):
+        value = os.environ.get(var)
+        if value:
+            try:
+                return max(1, int(value))
+            except ValueError:
+                pass
+    return 1
+
 
 
 class Branch:
@@ -737,6 +749,7 @@ class Optimizer:
         """
 
         model = gp.Model("Dual")
+        model.setParam("Threads", get_solver_threads())
         model.setParam('OutputFlag', 0)
 
         beta = model.addVar(vtype=gp.GRB.CONTINUOUS, lb=-float('inf'), name="beta")
@@ -828,6 +841,7 @@ class Optimizer:
 
         # Create a new model
         model = gp.Model("Primal")
+        model.setParam("Threads", get_solver_threads())
         model.setParam('OutputFlag', 0)
 
         gap_ratio = sum(farmer.quantity for farmer in self.instance.farmers) / self.instance.truck_capacity

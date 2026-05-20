@@ -32,8 +32,8 @@ set_reproducible_state(n_id)
 # =========================
 # CONFIG
 # =========================
-SIM_SIZE = 100
-N_INTS = 10
+SIM_SIZE = 1
+N_INTS = 1
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
 RESULTS_PATH = f"data/results_sc/{n_id}.json"
@@ -93,16 +93,18 @@ def sample_epsilon(platform):
 # =========================
 # CORE BUILDERS
 # =========================
-def build_instance(instance_id):
+def build_instance(instance_id, seed=n_id):
     """
     Generate a fresh instance and attach the road graph.
     """
-    instance_generator.gen_ints(N_INTS)
+    instance_generator.gen_ints(N_INTS, seed)
 
     instance_dict = instance_generator.gen_instance(
         instance_id,
         write=False,
         plot=False,
+        scale_factor=3,
+        seed=seed
     )
 
     platform = Instance.from_dict(instance_dict)
@@ -123,7 +125,6 @@ def run_single_simulation(instance_dict, platform):
     """
     Runs one optimization on a (possibly perturbed) platform.
     """
-    # Apply stochastic elements
     platform = apply_quantity_perturbation(instance_dict, platform)
 
     platform.set_graph(RoadGraph(GRAPH))
@@ -184,8 +185,11 @@ def main():
 
         instance_id = f"{n_id}_{sim_n}"
 
+
         # Build new instance (between-instance variation)
-        platform, instance_dict = build_instance(instance_id)
+        platform, instance_dict = build_instance(instance_id, seed=n_id)
+
+        print(instance_dict['farmers'])
 
         # Run one stochastic solve
         sim_result = run_single_simulation(instance_dict, platform)

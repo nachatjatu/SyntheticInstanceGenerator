@@ -6,10 +6,21 @@ platform instance tree.  There is also a placeholder for an OR-Tools based
 implementation.
 """
 
+import os
 import gurobipy as gp
 from farmers_intermediaries import Instance, Matching
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
+
+def get_solver_threads() -> int:
+    for var in ("SLURM_CPUS_PER_TASK", "GUROBI_THREADS"):
+        value = os.environ.get(var)
+        if value:
+            try:
+                return max(1, int(value))
+            except ValueError:
+                pass
+    return 1
 
 
 class TSPSolver:
@@ -43,7 +54,8 @@ class TSPSolver:
         if len(prizes) != len(self.instance.farmers):
             raise ValueError(f"Prizes length mismatch: {len(prizes)} != {len(self.instance.farmers)}")
         model = gp.Model("TSP")
-        model.setParam('OutputFlag', 0)
+        model.setParam("Threads", get_solver_threads())
+        model.setParam("OutputFlag", 0)
         
         # Add binary variables for each farmer
         farmer_ids = [farmer.id for farmer in self.instance.farmers]
@@ -122,8 +134,8 @@ class VRPSolver:
             A :class:`Matching` object describing the chosen routes.
         """
         model = gp.Model("VRP")
-        # Bound time limit for the solver to 60 minutes
-        model.setParam('TimeLimit', 3600)
+        model.setParam("Threads", get_solver_threads())
+        model.setParam("TimeLimit", 3600)
 
         # Add binary variables for each farmer and intermediary
         farmer_ids = [farmer.id for farmer in self.instance.farmers]

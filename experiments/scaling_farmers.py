@@ -24,18 +24,17 @@ n_id = int(sys.argv[1])
 def set_reproducible_state(seed_val):
     np.random.seed(seed_val)
     random.seed(seed_val)
-    
-set_reproducible_state(n_id)
+
 
 
 # =========================
 # CONFIG
 # =========================
-SCALE_FACTORS_LIST = [1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3]
+SCALE_FACTORS_LIST = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
 N_INTS = 15
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
-RESULTS_PATH = f"data/results_scaling_ints/{n_id}.json"
+RESULTS_PATH = f"data/results_scaling_farmers/{n_id}.json"
 
 FARMERS_PATH = "data/farmers.csv"
 INTS_PATH = "data/ints.csv"
@@ -77,6 +76,19 @@ def build_instance(instance_id, scale_factor):
     platform.set_graph(RoadGraph(GRAPH))
 
     return platform, instance_dict
+
+
+def reset_quantities(platform):
+    return {
+        farmer.id: min(
+            max(
+                np.floor((farmer.quantity + np.random.uniform(-0.5, 0.5)) * 10) / 10,
+                0.1,
+            ),
+            9.0,
+        )
+        for farmer in platform.farmers
+    }
 
 
 def reset_fixed_costs(platform):
@@ -156,14 +168,25 @@ def convert(obj):
 # MAIN EXPERIMENT LOOP
 # =========================
 def main():
-    scaling_factor_idx = (n_id - 1) % len(SCALE_FACTORS_LIST)
-    selected_scale_factor = SCALE_FACTORS_LIST[scaling_factor_idx]
+    # 1. instance assignment
+    layout_idx = (n_id - 1) // 65
+    layout_seeds = [1, 2, 3]
+    current_layout_seed = layout_seeds[layout_idx]
 
-    print(f"Starting task n_id={n_id} with scale_factor={selected_scale_factor}")
+    scale_idx = ((n_id - 1) % 65) // 13
+    selected_scale_factor = SCALE_FACTORS_LIST[scale_idx]
 
+    print(f"Starting task n_id={n_id} with scale_factor={selected_scale_factor} and layout {current_layout_seed}")
+
+    set_reproducible_state(current_layout_seed)
     instance_id = n_id
 
     platform, instance_dict = build_instance(instance_id, selected_scale_factor)
+
+    np.random.seed(n_id)
+
+    instance_dict['farmer_quantities'] = reset_quantities(platform)
+    instance_dict['het_costs'] = reset_fixed_costs(platform)
 
     sim_result = run_single_simulation(instance_dict, platform)
 

@@ -12,6 +12,7 @@ from scipy.interpolate import interp1d
 from names_generator import generate_name
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+import zlib
 
 # GLOBAL CONSTANTS
 INDO_CRS = "EPSG:23867"  # Indonesian Projected CRS
@@ -36,32 +37,33 @@ class InstanceGenerator:
         
         """Initializes the generator, builds spatial priors, and caches historical stats."""
         
-        # Coordinate Transformation Setup
+        # CRS transformers
         self.xy_to_ll = Transformer.from_crs(INDO_CRS, LL_CRS, always_xy=True)
         self.ll_to_xy = Transformer.from_crs(LL_CRS, INDO_CRS, always_xy=True)
 
+        # load data
         self.farmers_df = farmers_df
         self.ints_df = ints_df
         self.G_proj, self.bbox_m = self._init_graph(graph_path)
         
-        # 1. Spatial Grid Construction
+        # create spacial grid
         x_ax = np.arange(self.bbox_m[0], self.bbox_m[2], RES)
         y_ax = np.arange(self.bbox_m[1], self.bbox_m[3], RES)
         gx, gy = np.meshgrid(x_ax, y_ax, indexing='ij')
         self.grid_coords = np.vstack([gx.ravel(), gy.ravel()])
 
-        # 2. Density Estimation (KDE)
+        # KDEs
         self.int_spatial_kde = self._init_int_kde()
         self.farmer_spatial_kde = self._init_farmer_kde()
         
-        # Precompute global farmer spatial prior on the grid
+        # precompute farmer spatial priors on grid
         p_spatial = self.farmer_spatial_kde.evaluate(self.grid_coords)
         self.p_spatial = p_spatial / (p_spatial.sum() + 1e-20)
 
-        # 3. Distance Priors (Gamma Mixture Model)
+        # initialize distance KDE
         self.gamma_lookups = self._init_gamma_kdes()
 
-        # 4. Historical Statistics Caching
+        # cache historical statistics
         self.hist_quantities = (self.farmers_df.groupby('int_id')['quantity']
                                 .apply(list).to_dict())
         
@@ -72,7 +74,7 @@ class InstanceGenerator:
         self.ints = {}
         self.mills = [{'id': 'SKIP', 'location': [-0.682643, 102.501522]}]
 
-        # Fallback/Default Sigma values for clustering intensity
+        # sigma values for clustering intensity (precomputed)
         self.sigmas = {
             'Dodi Lesmana': 2500, 'Purnomo': 2500, 'Isna': 4000,
             'Agus Wibowo': 12000, 'Nurmala': 13500, 'yaya suhayat': 12500,
@@ -144,18 +146,22 @@ class InstanceGenerator:
         self.sigmas = {int_id: self.find_mle_sigma_adaptive(int_id) for int_id in self.ints}
 
 
-    def gen_ints(self, n_ints):
+    def gen_ints(self, n_ints, seed=390):
         """
         Samples synthetic intermediary locations within the bounding box.
         
         Args:
             n_ints (int): Number of intermediaries to generate.
         """
+        # seed
+        np.random.seed(seed)
+        random.seed(seed)
+
         ints = {}
         types = list(self.gamma_lookups.keys())
         names = set({})
         for _ in range(n_ints):
-            # Generate unique name (prevent duplicates)
+            # generate unique name (prevent duplicates)
             while True:
                 int_id = generate_name(style='capital')
                 if int_id not in names:
@@ -164,7 +170,7 @@ class InstanceGenerator:
 
             int_type = random.choice(types)
             
-            # Rejection sampling within bounding box
+            # rejection sampling within bounding box
             while True:
                 sample = self.int_spatial_kde.resample(1).flatten()
                 if (self.bbox_m[0] <= sample[0] <= self.bbox_m[2] and 
@@ -177,7 +183,7 @@ class InstanceGenerator:
         self.ints = ints
 
 
-    def gen_int_pickups(self, int_xy, int_type, n_farmers, sigma=500):
+    def gen_farmers(self, int_xy, int_type, n_farmers, sigma=500, int_seed=390):
         """
         Samples farmer locations using a sequential clustering process.
         
@@ -187,11 +193,17 @@ class InstanceGenerator:
             n_farmers (int): Number of farmers to sample.
             sigma (float): Bandwidth for clustering influence.
         """
+
+        # seed
+        np.random.seed(int_seed)
+        random.seed(int_seed)
+
+        # precompute distances from grid to int
         dist_lookup = self.gamma_lookups[int_type]
         grid_points = self.grid_coords.T 
         dists = np.linalg.norm(grid_points - int_xy, axis=1)
         
-        # 1. Base Prior (Distance PDF * Spatial Density)
+        # compute base log probabilities
         p_dist_raw = dist_lookup(dists)
         log_p_base = np.log(p_dist_raw + 1e-20) + np.log(self.p_spatial + 1e-20)
         log_p_base -= logsumexp(log_p_base)
@@ -204,30 +216,30 @@ class InstanceGenerator:
             if k == 0:
                 log_p_cond = log_p_base
             else:
-                # Bayesian update: Clustering influence (Add in log space)
+                # bayesian update: clustering influence (add in log space)
                 log_local_factor = np.log(acc_exp_kernels + 1e-20) - np.log(k)
                 log_p_cond = log_p_base + log_local_factor
                 log_p_cond -= logsumexp(log_p_cond)
 
             p_sampling = np.exp(log_p_cond)
             
-            # Fallback for numerical stability
+            # numerical stability fallback
             if np.isnan(p_sampling).any() or p_sampling.sum() == 0:
                 p_sampling = self.p_spatial
 
+            # sample farmer locations
             idx = np.random.choice(len(p_sampling), p=p_sampling/p_sampling.sum())
             sampled_xy = self.grid_coords[:, idx]
             locs.append(sampled_xy)
             
-            # Update kernels for next sequential farmer
+            # update kernel for next farmer in sequence
             new_dist_sq = np.sum((grid_points - sampled_xy)**2, axis=1)
             acc_exp_kernels += np.exp(-new_dist_sq / sigma_sq_2)
 
-        qs = np.random.choice(self.hist_quantities[int_type], size=n_farmers, replace=True)
-        return np.array(locs), qs
+        return np.array(locs)
     
 
-    def gen_instance(self, instance_id, write=True, plot=True, scale_factor=1.0):
+    def gen_instance(self, instance_id, write=True, plot=True, scale_factor=1.0, seed=390):
         """
         Orchestrates full instance generation and saves to YAML.
         
@@ -238,21 +250,39 @@ class InstanceGenerator:
         Returns:
             dict: representation of farmers, ints, and mills in instance
         """
+
         farmers, ints = [], []
 
         for int_id, int_data in self.ints.items():
+            # generate intermediary-specific seed
+            int_seed = seed + zlib.crc32(int_id.encode()) % 1000000
+
+            # seed generations
+            np.random.seed(int_seed)
+            random.seed(int_seed)
+
+            # sample intermediary type and location
             int_type, int_xy, int_ll = int_data['type'], int_data['xy'], int_data['ll']
+
+            # sample number of farmers in intermediary's network
             n_farmers = np.random.choice(self.hist_n_farmers[int_type])
-
             raw_n = n_farmers * scale_factor
-
-            n_farmers = int(np.floor(raw_n) + (np.random.rand() < (raw_n % 1)))
+            n_farmers = int(np.floor(raw_n) + (np.random.rand() < (raw_n % 1))) # Bernoulli using scale_factor
             
             if n_farmers > 0:
-                s_val = self.sigmas.get(int_type, 5000)
-                locs, qs = self.gen_int_pickups(int_xy, int_type, n_farmers, s_val)
+                # generate farmer locations
+                sigma = self.sigmas.get(int_type, 5000)
+                farmer_xys = self.gen_farmers(int_xy, int_type, n_farmers, sigma=sigma, int_seed=int_seed)
 
-                # Rescale quantities to fit intermediary capacity constraints
+                # generate farmer quantities
+                np.random.seed(int_seed)
+                qs = []
+                for _ in range(n_farmers):
+                    q = np.random.choice(self.hist_quantities[int_type], size=1, replace=True)[0]
+                    qs.append(q)
+                qs = np.array(qs)
+
+                # rescale quantities to fit intermediary capacity constraints
                 total_q = qs.sum()
                 if total_q >= MAX_CAPACITY:
                     sf = (MAX_CAPACITY - 0.01) / total_q
@@ -261,11 +291,12 @@ class InstanceGenerator:
                 else:
                     sf = 1
                 qs_scaled = qs * sf
-                
+
+                # format and append farmers
                 routes = []
                 for f in range(n_farmers):
                     f_id = f'{int_id}_f{f}'
-                    f_lon, f_lat = self.xy_to_ll.transform(locs[f][0], locs[f][1])
+                    f_lon, f_lat = self.xy_to_ll.transform(farmer_xys[f][0], farmer_xys[f][1])
                     
                     farmers.append({
                         'id': f_id, 
@@ -282,6 +313,7 @@ class InstanceGenerator:
                     'routes': [routes]
                 })
         
+        # write and plot (if desired)
         instance = {'instance_id': instance_id,
                     'farmers': farmers, 
                     'intermediaries': ints, 

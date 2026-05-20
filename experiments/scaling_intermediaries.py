@@ -3,7 +3,7 @@ import json
 import pickle
 import numpy as np
 import pandas as pd
-import random
+import os
 
 sys.path.insert(0, "src")
 
@@ -21,20 +21,15 @@ if len(sys.argv) != 2:
 
 n_id = int(sys.argv[1])
 
-def set_reproducible_state(seed_val):
-    np.random.seed(seed_val)
-    random.seed(seed_val)
-    
-set_reproducible_state(n_id)
-
 
 # =========================
 # CONFIG
 # =========================
-N_INTS_LIST = [10, 15, 20, 25, 30, 35, 40]
+N_INTS_LIST = [n_int for n_int in range(12, 30+1, 3)]
+NUM_SEEDS = 4
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
-RESULTS_PATH = f"data/results_scaling_farmers/{n_id}.json"
+
 
 FARMERS_PATH = "data/farmers.csv"
 INTS_PATH = "data/ints.csv"
@@ -58,22 +53,24 @@ instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
 # =========================
 # CORE BUILDERS
 # =========================
-def build_instance(instance_id, n_ints):
+def build_instance(instance_id, n_ints, seed):
     """
     Generate a fresh instance and attach the road graph.
     """
-    instance_generator.gen_ints(n_ints)
+    instance_generator.gen_ints(n_ints, seed=seed)
 
     instance_dict = instance_generator.gen_instance(
         instance_id,
         write=False,
         plot=False,
+        seed=seed
     )
 
     platform = Instance.from_dict(instance_dict)
     platform.set_graph(RoadGraph(GRAPH))
 
     return platform, instance_dict
+
 
 def reset_fixed_costs(platform):
     return {
@@ -86,7 +83,7 @@ def reset_fixed_costs(platform):
 
 
 
-def run_single_simulation(instance_dict, platform):
+def run_single_simulation(platform):
     """
     Runs one optimization on a (possibly perturbed) platform.
     """
@@ -152,30 +149,40 @@ def convert(obj):
 # MAIN EXPERIMENT LOOP
 # =========================
 def main():
-    n_ints_idx = (n_id - 1) % len(N_INTS_LIST)
-    selected_n_ints = N_INTS_LIST[n_ints_idx]
+    
+    # 1. Fast cycle: cycling through the intermediaries
+    n_ints_idx = n_id % len(N_INTS_LIST)
+    n_ints = N_INTS_LIST[n_ints_idx]
 
-    print(f"Starting task n_id={n_id} with N_INTS={selected_n_ints}")
+    # 2. Slow cycle: change seed only after we've finished all n_ints for the current seed
+    instance_seed = (n_id // len(N_INTS_LIST)) % NUM_SEEDS
 
-    instance_id = n_id
+    print(f"Starting task n_id={n_id} with instance {instance_seed} and N_INTS={n_ints}")
 
-    platform, instance_dict = build_instance(instance_id, selected_n_ints)
-
-    sim_result = run_single_simulation(instance_dict, platform)
+    platform, instance_dict = build_instance(n_id, n_ints, seed=instance_seed)
+    
+    sim_result = run_single_simulation(platform)
 
     # Add metadata
     sim_result.update({
-        "instance_id": instance_id,
+        "instance_id": n_id,
         "n_id": n_id,
-        "n_ints": selected_n_ints,
+        "n_ints": n_ints,
     })
 
+    results_path = f"data/results_scaling_ints/instance_{instance_seed}/{n_id}.json"
 
+
+    dir_name = os.path.dirname(results_path)
+
+    # Create the directories
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
     # Save results
-    with open(RESULTS_PATH, "w") as f:
+    with open(results_path, "w") as f:
         json.dump(sim_result, f, indent=4, default=convert)
 
-    print(f"Results saved to {RESULTS_PATH}")
+    print(f"Results saved to {results_path}")
 
 
 # =========================
