@@ -153,13 +153,25 @@ class InstanceGenerator:
         Args:
             n_ints (int): Number of intermediaries to generate.
         """
-        rng = np.random.default_rng(seed)
+        ss = np.random.SeedSequence(seed)
+
+        # One independent RNG stream per intermediary
+        child_seeds = ss.spawn(n_ints)
+        rngs = [np.random.default_rng(child_seed) for child_seed in child_seeds]
 
         ints = {}
+        names = set()
         types = list(self.gamma_lookups.keys())
 
         for i in range(n_ints):
-            int_id = f'int_{i}'
+            rng = rngs[i]
+
+            while True:
+                int_id = generate_name(seed=int(rng.integers(0, 2**32 - 1)))
+
+                if int_id not in names:
+                    names.add(int_id)
+                    break
 
             int_type = rng.choice(types)
             

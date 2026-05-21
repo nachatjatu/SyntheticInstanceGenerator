@@ -19,6 +19,7 @@ from dynamic_solvers import TSPSolver as dynamic_TSPSolver
 import numpy as np
 import json
 from itertools import combinations
+from pprint import pprint
 
 def get_solver_threads() -> int:
     for var in ("SLURM_CPUS_PER_TASK", "GUROBI_THREADS"):
@@ -277,7 +278,9 @@ class Optimizer:
                     if int_1_hist_fruit >= int_2_hist_fruit:
                         rels.append((intermediary1.id, intermediary2.id))
                         #print(f"Intermediary {intermediary1.id} dominates {intermediary2.id} with costs {self.het_costs[intermediary1.id]} < {self.het_costs[intermediary2.id]} and hist fruit {int_1_hist_fruit} >= {int_2_hist_fruit}")
-        print(f"Calculated dominance relations: {rels}")
+        print(" Dominance relations ".center(80, '-'))
+        pprint(rels)
+        print()
         return rels
 
     def initialize_base_matchings(self):
@@ -296,7 +299,7 @@ class Optimizer:
         # except FileNotFoundError:
         all_matchings = {}
         # We solve a VRP with 1 to n_intermediaries
-        print("Solving VRP")
+        print(" Solving VRP ".center(80, '-'))
 
         if self.solver == "gurobi":
             min_cost_matching = self.vrp_solver.solve(1, self.n_intermediaries)
@@ -312,6 +315,7 @@ class Optimizer:
                 matching.cost = matching.cost + (lower_n_intermediaries-len(min_cost_matching.routes)) * self.instance.truck_fixed_cost
                 all_matchings[lower_n_intermediaries] = matching
                 print(f"\tObjective: {matching.cost}")
+            print()
         elif self.solver == "ORTools":
             min_cost_matching = self.vrp_solver.solve()
             print(f"\tObjective: {min_cost_matching.cost}")
@@ -325,8 +329,9 @@ class Optimizer:
         self.max_trucks = max(all_matchings.keys())
 
         matchings_cost = {k: v.cost for k, v in all_matchings.items()}
-        print(f"Matchings cost: {matchings_cost}")
-
+        print(' Matchings cost '.center(80, '-'))
+        pprint(matchings_cost)
+        print()
         return all_matchings
     
     def initialize_all_matchings(self):
@@ -395,7 +400,11 @@ class Optimizer:
 
         # 1. compute lower bound LB^n
         forced_lb = self.solve_primal(branch, "forced_lower_bound")
-        print(f"Forced lower bound: {forced_lb['profit']}, min cost set: {branch.min_cost_set}")
+        print(f"Forced LB: {forced_lb['profit']}")
+        print("Min Cost Set:")
+        pprint(branch.min_cost_set)
+        print()
+
         if forced_lb["profit"] > self.best_lb:
             self.best_lb = forced_lb["profit"]
             self.best_lb_set = branch.min_cost_set
@@ -410,7 +419,11 @@ class Optimizer:
 
         # 2. compute upper bound UB^n
         forced_ub = self.solve_primal(branch, "forced_upper_bound")
-        print(f"Forced upper bound: {forced_ub['profit']}, min cost set: {branch.min_cost_set}")
+        print(f"Forced UB: {forced_ub['profit']}")
+        print("Min Cost Set:")
+        pprint(branch.min_cost_set)
+        print()
+
         if forced_ub["profit"] < self.best_lb + Optimizer.TOLERANCE:
             print("\tForced upper bound is less than best lower bound, stopping branch")
             return {"status": "stop"}
@@ -463,7 +476,11 @@ class Optimizer:
         Returns a dict similar to :meth:`solve_branch_exact` but may propose
         heuristic branching decisions.
         """
-        print(f"Solving branch with matching {branch.matching} and unmatching {branch.unmatching}")
+        print("Matching:")
+        pprint(branch.matching)
+        print("Unmatching:")
+        pprint(branch.unmatching)
+        print()
 
         min_cost_set, _, min_cost = self.prize_matching({int_id: 0 for int_id in self.intermediary_ids}, branch)
         branch.min_cost_set = min_cost_set
@@ -476,7 +493,11 @@ class Optimizer:
             self.instance_summary.forced_lower_bound = forced_lb["profit"]
             self.instance_summary.forced_cost = forced_lb["matching_cost"]
 
-        print(f"Forced lower bound: {forced_lb['profit']}, min cost set: {branch.min_cost_set}")
+        print(f"Forced LB: {forced_lb['profit']}")
+        print("Min Cost Set:")
+        pprint(branch.min_cost_set)
+        print()
+
         if forced_lb["profit"] > self.best_lb:
             self.best_lb = forced_lb["profit"]
             self.best_lb_set = branch.min_cost_set
@@ -492,9 +513,14 @@ class Optimizer:
         forced_ub = self.solve_primal(branch, "forced_upper_bound")
         if len(branch.matching) == 0 and len(branch.unmatching) == 0:
             self.instance_summary.forced_upper_bound = forced_ub["profit"]
-        print(f"Forced upper bound: {forced_ub['profit']}, min cost set: {branch.min_cost_set}")
+
+        print(f'Forced UB {forced_ub['profit']}')
+        print("Min Cost Set:")
+        pprint(branch.min_cost_set)
+        print()
+
         if forced_ub["profit"] < self.best_lb + Optimizer.TOLERANCE:
-            print("\tForced upper bound is less than best lower bound, stopping branch")
+            print("\tForced upper bound is less than best lower bound, stopping branch\n")
             return {"status": "stop"}
         
         if optimize:
@@ -544,7 +570,7 @@ class Optimizer:
                     active_branches.append(branch_sol)
             
             if not active_branches or (("early_stop" in self.options) and self.options["early_stop"]):
-                print("No more active branches, stopping")
+                print("No more active branches, stopping\n")
                 break
             print(f"Currently a total of {len(active_branches)} branches in the queue")
             print(f"Upper bounds of active branches: {[branch['branch_profits'][branch["branch_on"]] for branch in active_branches]}")
@@ -553,7 +579,7 @@ class Optimizer:
                 if branch["upper_bound"] < self.best_lb:
                     active_branches.remove(branch)
             if not active_branches:
-                print("No more active branches with upper bound greater than best lower bound, stopping")
+                print("No more active branches with upper bound greater than best lower bound, stopping\n")
                 break
 
             max_branch = max(active_branches, key=lambda x: x["branch_profits"][x["branch_on"]])
@@ -571,7 +597,8 @@ class Optimizer:
                 self.instance_summary.oracle_calls.append(self.oracle_calls)
 
                 print(f"New upper bound: {self.best_ub}, current gap: {(self.best_ub - self.best_lb) / np.abs(self.best_lb)}")
-                print("summary", self.instance_summary.upper_bounds)
+                print("Summary:", self.instance_summary.upper_bounds)
+                print()
                 
             # pop the max branch from the active branches
             father_branch = max_branch["branch"]
@@ -581,7 +608,7 @@ class Optimizer:
                 if branch["upper_bound"] < self.best_lb:
                     active_branches.remove(branch)
 
-            print(f"Branching on {max_branch['branch_on']} with value {max_branch['branch_profits'][max_branch['branch_on']]}")
+            print(f" Branching on {max_branch['branch_on']} with value = {max_branch['branch_profits'][max_branch['branch_on']]} ".center(80, '-'))
             left_branch = Branch(father_branch.matching.union({max_branch["branch_on"]}), father_branch.unmatching)
             right_branch = Branch(father_branch.matching, father_branch.unmatching.union({max_branch["branch_on"]}))
             right_branch.count_flag = False
@@ -649,7 +676,7 @@ class Optimizer:
                     active_branches.append(branch_sol)
             
             if not active_branches:
-                print("No more active branches, stopping")
+                print("No more active branches, stopping\n")
                 break
             print(f"Currently a total of {len(active_branches)} branches in the queue")
             print(f"Upper bounds of active branches: {[branch['upper_bound'] for branch in active_branches]}")

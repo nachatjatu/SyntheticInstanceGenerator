@@ -4,6 +4,8 @@ import pickle
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import itertools
+from pprint import pprint
 
 sys.path.insert(0, "src")
 
@@ -24,73 +26,21 @@ n_id = int(sys.argv[1])
 # =========================
 # CONFIG
 # =========================
-SIM_SIZE = 1
-N_INTS_LIST = [i for i in range(6, 30+1, 4)]
-N_INSTANCES = 4
+TEXTWIDTH = 80
+N_INTS = [8, 10, 12, 14, 16, 18, 20, 22]    # 8 n_ints
+EPSILONS = [1, 3, 5, 7]                     # 4 epsilons
+INSTANCE_SEEDS = [1, 2, 3, 4, 5, 6]         # 6 instances
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
-
 FARMERS_PATH = "data/farmers.csv"
 INTS_PATH = "data/ints.csv"
-MILLS_PATH = "data/mills.csv"
-
-
-# =========================
-# LOAD STATIC DATA
-# =========================
-farmers_df = pd.read_csv(FARMERS_PATH)
-ints_df = pd.read_csv(INTS_PATH)
-mills_df = pd.read_csv(MILLS_PATH)
-
-with open(GRAPH_PATH, "rb") as f:
-    GRAPH = pickle.load(f)
-
-# Initialize generator once
-instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
-
-
-# =========================
-# STOCHASTIC COMPONENTS
-# =========================
-def reset_quantities(platform, rng):
-    return {
-        farmer.id: min(
-            max(
-                np.floor((farmer.quantity + rng.uniform(-0.5, 0.5)) * 10) / 10,
-                0.1,
-            ),
-            9.0,
-        )
-        for farmer in platform.farmers
-    }
-
-
-def reset_fixed_costs(platform, rng):
-    return {
-        intermediary.id: (
-            platform.dist_to_mill[intermediary.id] * 4
-            + rng.normal(0, 100000)
-        )
-        for intermediary in platform.intermediaries
-    }
-
-
-def sample_epsilon(platform, rng):
-    return {
-        intermediary.id: rng.uniform(0, 6.0)
-        for intermediary in platform.intermediaries
-    }
-
-
-
 
 # =========================
 # CORE BUILDERS
 # =========================
-def build_instance(instance_id, n_ints, seed=n_id):
-    """
-    Generate a fresh instance and attach the road graph.
-    """
+def build_instance(instance_generator, graph, instance_id, n_ints, seed=n_id):
+    print(f'Building instance {instance_id} with n_ints = {n_ints}, seed = {seed}')
+
     instance_generator.gen_ints(n_ints, seed)
 
     instance_dict = instance_generator.gen_instance(
@@ -101,32 +51,31 @@ def build_instance(instance_id, n_ints, seed=n_id):
     )
 
     platform = Instance.from_dict(instance_dict)
-    platform.set_graph(RoadGraph(GRAPH))
+    platform.set_graph(RoadGraph(graph))
+
+    msg = f" Instance Details ".center(TEXTWIDTH, "-")
+    print(msg)
+    print("Intermediaries:")
+    pprint(platform.intermediaries)
+    print()
+    print("Farmers:")
+    pprint(platform.farmers)
+    print()
 
     return platform, instance_dict
 
 
-def apply_quantity_perturbation(instance_dict, platform, rng):
-    """
-    Rebuild platform with perturbed quantities.
-    """
-    quantities = reset_quantities(platform, rng)
-    return Instance.from_dict(instance_dict, opt_quantities=quantities)
 
+def run_single_simulation(platform, epsilon, graph):
+    print(f'Running simulation with epsilon = {epsilon}')
 
-def run_single_simulation(instance_dict, platform, rng):
-    """
-    Runs one optimization on a (possibly perturbed) platform.
-    """
-    platform = apply_quantity_perturbation(instance_dict, platform, rng)
+    platform.set_graph(RoadGraph(graph))
 
-    platform.set_graph(RoadGraph(GRAPH))
-
-    epsilon = sample_epsilon(platform, rng)
-    het_costs = reset_fixed_costs(platform, rng)
+    epsilons = {intermediary.id: epsilon for intermediary in platform.intermediaries}
+    het_costs = {intermediary.id: (platform.dist_to_mill[intermediary.id] * 4) for intermediary in platform.intermediaries}
 
     parameters = {
-        "epsilon": epsilon,
+        "epsilon": epsilons,
         "solver": "gurobi",
         "het_costs": het_costs,
     }
@@ -150,12 +99,14 @@ def run_single_simulation(instance_dict, platform, rng):
         "structured_farmer_prices": False,
         "domination": True,})
 
-    # Collect outputs
-
     farmer_quantities = {f.id: f.quantity for f in platform.farmers}
 
-    print(f"Profits are vanilla: {summary_vanilla.max_int_welf_sol.profit}, structured: {summary_structured.max_int_welf_sol.profit}, domination: {summary_domination.max_int_welf_sol.profit}")
-    print(f"Profit percentage is: {summary_vanilla.max_int_welf_sol.profit / (np.sum(list(farmer_quantities.values())) * platform.fruit_price)}")
+    print(" Profits ".center(TEXTWIDTH, "-"))
+    print(f"Vanilla: {summary_vanilla.max_int_welf_sol.profit}")
+    print(f"Structured: {summary_structured.max_int_welf_sol.profit}")
+    print(f"Domination: {summary_domination.max_int_welf_sol.profit}")
+    print(f"Vanilla Profit %: {summary_vanilla.max_int_welf_sol.profit / (np.sum(list(farmer_quantities.values())) * platform.fruit_price) * 100}")
+    print()
 
     return {
         "epsilon": epsilon,
@@ -187,26 +138,33 @@ def convert(obj):
 # MAIN EXPERIMENT LOOP
 # =========================
 def main():
+    # load static data
+    farmers_df = pd.read_csv(FARMERS_PATH)
+    ints_df = pd.read_csv(INTS_PATH)
+    with open(GRAPH_PATH, "rb") as f:
+        graph = pickle.load(f)
 
-    n_ints = N_INTS_LIST[n_id % len(N_INTS_LIST)]
-    instance_id = (n_id // len(N_INTS_LIST)) % N_INSTANCES
+    sweep_grid = list(itertools.product(INSTANCE_SEEDS, EPSILONS, N_INTS))
+    instance_id, epsilon, n_ints = sweep_grid[n_id]
+    
+    msg = f" Experiment {n_id}: n_ints = {n_ints}, instance_seed = {instance_id}, epsilon = {epsilon} "
+    print(msg.center(TEXTWIDTH, "="))
+    print()
 
-    print(f"Starting experiment {n_id} with {n_ints} ints and instance {instance_id}")
+    # initialize generator and platform
+    instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
+    platform, _ = build_instance(instance_generator, graph, n_id, n_ints, seed=instance_id)
 
-    platform, instance_dict = build_instance(n_id, n_ints, seed=instance_id)
+    # run one stochastic solve
+    sim_result = run_single_simulation(platform, epsilon, graph)
 
-    rng = np.random.default_rng(n_id)
-
-    # Run one stochastic solve
-    sim_result = run_single_simulation(instance_dict, platform, rng)
-
-    # Add metadata
+    # add metadata
     sim_result.update({
         "instance_id": instance_id,
         "n_id": n_id,
     })
 
-    # Save results
+    # save results
     results_path = Path(f"data/results_scaling_ints/{instance_id}/{n_id}.json")
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
