@@ -1,8 +1,6 @@
 import pickle
-import random
 import os
 import numpy as np
-import pandas as pd
 import yaml
 from scipy.stats import gaussian_kde
 from pyproj import Transformer
@@ -12,31 +10,18 @@ from scipy.interpolate import interp1d
 from names_generator import generate_name
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
-import zlib
+
 
 # GLOBAL CONSTANTS
-INDO_CRS = "EPSG:23867"  # Indonesian Projected CRS
-LL_CRS = "EPSG:4326"    # WGS84 Lat/Lon
+INDO_CRS = "EPSG:23867"             # Indonesian Projected CRS
+LL_CRS = "EPSG:4326"                # WGS84 Lat/Lon
 MIN_CAPACITY, MAX_CAPACITY = 2, 9
-RES = 250                # Grid resolution in meters
-MAX_DIST = 63000         # Maximum sampling distance
+RES = 250                           # Grid resolution in meters
+MAX_DIST = 63000                    # Maximum sampling distance
 
 class InstanceGenerator:
-    """
-    Generates synthetic farmer-intermediary instances using a hybrid 
-    Bayesian prior (Gamma + Spatial) with local sequential clustering.
-
-    Attributes:
-        farmers_df (pd.DataFrame): Historical data of farmer transactions.
-        ints_df (pd.DataFrame): Data regarding intermediary locations and types.
-        xy_to_ll (Transformer): Coordinate transformer (Projected -> WGS84).
-        ll_to_xy (Transformer): Coordinate transformer (WGS84 -> Projected).
-    """
     def __init__(self, farmers_df, ints_df, 
                  graph_path="../FactoredPlatformSolver/data/graph_0-14960_00.pickle"):
-        
-        """Initializes the generator, builds spatial priors, and caches historical stats."""
-        
         # CRS transformers
         self.xy_to_ll = Transformer.from_crs(INDO_CRS, LL_CRS, always_xy=True)
         self.ll_to_xy = Transformer.from_crs(LL_CRS, INDO_CRS, always_xy=True)
@@ -85,7 +70,6 @@ class InstanceGenerator:
 
 
     def _init_graph(self, graph_path):
-        """Loads and projects the road network graph to get bounding box limits."""
         with open(graph_path, 'rb') as f:
             G = pickle.load(f)
         G_proj = ox.project_graph(G, to_crs=INDO_CRS)
@@ -94,22 +78,16 @@ class InstanceGenerator:
     
 
     def _init_int_kde(self, int_bw=0.2):
-        """Estimates spatial density of intermediaries."""
         coords = self.ints_df.drop_duplicates(['int_id'])[['int_x', 'int_y']].T
         return gaussian_kde(coords, bw_method=int_bw)
 
 
     def _init_farmer_kde(self, farmer_bw=0.2):
-        """Estimates spatial density of farmers."""
         coords = self.farmers_df.drop_duplicates(['farmer_x', 'farmer_y'])[['farmer_x', 'farmer_y']].T
         return gaussian_kde(coords, bw_method=farmer_bw)
     
     
     def _init_gamma_kdes(self):
-        """
-        Builds lookup tables for the Gamma Mixture distance model.
-        Returns a dictionary mapping int_id to a PDF interpolation function.
-        """
         int_to_dists = (self.farmers_df
                         .drop_duplicates(['int_id', 'farmer_x', 'farmer_y'])
                         .groupby('int_id')['distance']
@@ -142,17 +120,10 @@ class InstanceGenerator:
     
     
     def _init_sigmas(self):
-        """Runs MLE optimization to find clustering sigmas for all intermediaries."""
         self.sigmas = {int_id: self.find_mle_sigma_adaptive(int_id) for int_id in self.ints}
 
 
     def gen_ints(self, n_ints, seed):
-        """
-        Samples synthetic intermediary locations within the bounding box.
-        
-        Args:
-            n_ints (int): Number of intermediaries to generate.
-        """
         ss = np.random.SeedSequence(seed)
 
         # One independent RNG stream per intermediary
@@ -189,16 +160,6 @@ class InstanceGenerator:
 
 
     def gen_farmers(self, int_xy, int_type, n_farmers, rng, sigma=500):
-        """
-        Samples farmer locations using a sequential clustering process.
-        
-        Args:
-            int_xy (np.array): Center coordinate [x, y].
-            int_type (str): Type of intermediary (for Gamma lookup).
-            n_farmers (int): Number of farmers to sample.
-            sigma (float): Bandwidth for clustering influence.
-        """
-
         # precompute distances from grid to int
         dist_lookup = self.gamma_lookups[int_type]
         grid_points = self.grid_coords.T 
@@ -240,17 +201,7 @@ class InstanceGenerator:
         return np.array(locs)
     
 
-    def gen_instance(self, instance_id, seed, write=True, plot=True, scale_factor=1.0):
-        """
-        Orchestrates full instance generation and saves to YAML.
-        
-        Args:
-            instance_id (str): Filename identifier for the output.
-            write (bool): True if write to YAML, False otherwise
-
-        Returns:
-            dict: representation of farmers, ints, and mills in instance
-        """
+    def gen_instance(self, instance_id, seed, write=False, plot=False, scale_factor=1.0):
 
         farmers, ints = [], []
 
@@ -341,9 +292,6 @@ class InstanceGenerator:
     
 
     def plot_instance(self, instance_data):
-        """
-        Plots the KDE background, the OSMnx road network, and the generated instances.
-        """
         plt.figure(figsize=(14, 11))
         
         # 1. Plot the Farmer KDE Background
@@ -408,17 +356,6 @@ class InstanceGenerator:
 
     
     def find_mle_sigma_adaptive(self, int_type, start_sigma=2500, step=500):
-            """
-            Finds the optimal sigma by climbing the likelihood surface.
-            
-            Args:
-                int_type (str): The intermediary ID to optimize for.
-                start_sigma (int): Initial clustering bandwidth.
-                step (int): Increment for search.
-                
-            Returns:
-                float: The sigma that maximizes Log-Likelihood.
-            """
             best_sigma = start_sigma
             best_ll = -np.inf
             current_sigma = start_sigma
@@ -435,13 +372,13 @@ class InstanceGenerator:
             historical_indices = []
             for _, group in daily_groups:
                 coords = group[['farmer_x', 'farmer_y']].values
-                indices = [np.argmin(np.sum((self.grid_coords.T - c)**2, axis=1)) for c in coords]
+                indices = [np.argmin(np.sum((self.grid_coords.T - c) ** 2, axis=1)) for c in coords]
                 historical_indices.append(indices)
 
             # Hill-climbing optimization
             while True:
                 total_ll = 0
-                sigma_sq_2 = 2 * (current_sigma**2)
+                sigma_sq_2 = 2 * (current_sigma ** 2)
                 
                 for f_indices in historical_indices:
                     acc_exp_kernels = np.zeros(len(self.grid_coords[0]))

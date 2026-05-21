@@ -31,7 +31,7 @@ N_INTS = [8, 10, 12, 14, 16, 18, 20, 22]    # 8 n_ints
 EPSILONS = [1, 3, 5, 7]                     # 4 epsilons
 INSTANCE_SEEDS = [1, 2, 3, 4, 5, 6]         # 6 instances
 
-GRAPH_PATH = "data/graph_0-14960_00.pickle"
+GRAPH_PATH = "data/graph_0-14960_00_new.pickle"
 FARMERS_PATH = "data/farmers.csv"
 INTS_PATH = "data/ints.csv"
 
