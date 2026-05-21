@@ -244,14 +244,38 @@ class InstanceGenerator:
                 qs = np.array(qs)
 
                 # rescale quantities to fit intermediary capacity constraints
+                # generate farmer quantities
+                qs = []
+                for _ in range(n_farmers):
+                    q = rng.choice(self.hist_quantities[int_type], replace=True)
+                    qs.append(q)
+                qs = np.array(qs)
+
+                # rescale quantities to fit intermediary capacity constraints
                 total_q = qs.sum()
+
                 if total_q >= MAX_CAPACITY:
-                    sf = (MAX_CAPACITY - 0.01) / total_q
+                    target_total = MAX_CAPACITY - 0.1
                 elif total_q < MIN_CAPACITY:
-                    sf = MIN_CAPACITY / total_q
+                    target_total = MIN_CAPACITY
                 else:
-                    sf = 1
-                qs_scaled = qs * sf
+                    target_total = total_q
+
+                qs_scaled = np.round(qs * (target_total / total_q), 1)
+                qs_scaled = np.maximum(qs_scaled, 0.1)
+
+                while qs_scaled.sum() >= MAX_CAPACITY:
+                    idx = np.argmax(qs_scaled)
+                    if qs_scaled[idx] <= 0.1:
+                        raise ValueError("Cannot satisfy MAX_CAPACITY with positive 1-decimal quantities.")
+                    qs_scaled[idx] = np.round(qs_scaled[idx] - 0.1, 1)
+
+                while qs_scaled.sum() < MIN_CAPACITY:
+                    idx = np.argmin(qs_scaled)
+                    qs_scaled[idx] = np.round(qs_scaled[idx] + 0.1, 1)
+
+                assert np.all(np.isclose(qs_scaled * 10, np.round(qs_scaled * 10))), qs_scaled
+                assert MIN_CAPACITY <= qs_scaled.sum() < MAX_CAPACITY, qs_scaled.sum()
 
                 # format and append farmers
                 routes = []

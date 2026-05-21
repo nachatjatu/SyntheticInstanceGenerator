@@ -969,9 +969,17 @@ class Optimizer:
                         prizes[farmer.id] = farmer.quantity * self.instance.fruit_price - farmer_prices_val[farmer.id] - eta_val[intermediary.id] * (farmer.quantity if (farmer.id not in hist_set) else 0)
                     start_tsp_time = time.time()
                     row_routes, row_objs = self.tsp_solver.solve(prizes)
+
+                    # TO REMOVE
+                    if len(row_routes) == 0:
+                        print(
+                            f"WARNING: TSP returned no feasible routes for {intermediary.id}, "
+                            f"hist_set_index={hist_set_index}"
+                        )
                     
                     self.time_usage["tsp"] += time.time() - start_tsp_time
                     for row_route, row_obj in zip(row_routes, row_objs):
+                        
                         if len(row_route.farmers) > 0:
                             violation = row_obj - kappa_val[intermediary.id, hist_set_index] - self.het_costs[intermediary.id]
                             # Make sure that the route is not empty
@@ -1003,6 +1011,7 @@ class Optimizer:
             self.all_routes.update(iteration_routes)
                             
             self.time_usage["callback"] += time.time() - start_callback_time
+            
 
             if max_violation < Optimizer.TOLERANCE:
                 return 0

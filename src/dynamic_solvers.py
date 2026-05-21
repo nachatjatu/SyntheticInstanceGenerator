@@ -8,7 +8,7 @@ are used by the pricing algorithms to generate and value routes efficiently.
 import gurobipy as gp
 from farmers_intermediaries import Instance
 import numpy as np
-
+import math
 
 class PrizeMatrix:
     """Helper structure for rapid computation of best subsets of farmers.
@@ -145,6 +145,10 @@ class TSPSolver:
         farmer_index_to_node_index = {i: nodes_indices[farmer.id] for i, farmer in enumerate(self.instance.farmers)}
         ordering = [nodes_indices[node] for node in list(reversed(self.instance.tree_order))]
         quantities = [int(farmer.quantity * self.MULTIPLIER) for farmer in self.instance.farmers]
+        # quantities = [
+        #     math.ceil(farmer.quantity * self.MULTIPLIER - 1e-9)
+        #     for farmer in self.instance.farmers
+        # ]
         parents = [nodes_indices[self.instance.node_to_parent[node]] if node != self.instance.mill.id else -1 for node in self.instance.tree.nodes()]
         root_node = nodes_indices[self.instance.mill.id]
         costs = np.zeros((n_nodes, n_nodes))
@@ -179,6 +183,46 @@ class TSPSolver:
         total_prizes, farmer_sets = self.prize_matrix.solve(prizes, -np.inf)
 
         selected_farmers_sets = [[self.instance.farmers[i].id for i in farmer_set] for farmer_set in farmer_sets]
+
+        feasible_candidates = []
+
+        for total_prize, selected_farmers in zip(total_prizes, selected_farmers_sets):
+            if len(selected_farmers) == 0:
+                raise ValueError("Zero farmers selected")
+
+            route = self.instance.calculate_tree_path(selected_farmers)
+
+            # Skip infeasible DP candidates, but keep searching through the larger pool
+            if not route.is_feasible:
+                continue
+
+            objective = total_prize - self.instance.truck_fixed_cost
+
+            # Objective consistency check
+            alt_objective = (
+                sum(prizes_dict[farmer_id] for farmer_id in selected_farmers)
+                - route.cost
+            )
+
+            if abs(objective - alt_objective) > 1e-4:
+                raise ValueError(f"Objective mismatch: {objective} != {alt_objective}")
+
+            feasible_candidates.append((objective, route))
+
+        # Keep top N feasible routes, not top N approximate DP candidates
+        feasible_candidates.sort(key=lambda x: x[0], reverse=True)
+        feasible_candidates = feasible_candidates[:self.prize_matrix.TOP_N]
+
+        final_routes = [route for objective, route in feasible_candidates]
+        final_objectives = [objective for objective, route in feasible_candidates]
+
+        if len(final_routes) == 0:
+            raise RuntimeError(
+                "Pricing returned no feasible routes after DP candidate generation. "
+                "This can underconstrain the primal and produce inflated profit."
+            )
+
+        return final_routes, final_objectives
 
         # Loop over farmers and compute their profit
         final_routes, final_objectives = [], []
