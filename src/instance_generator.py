@@ -276,7 +276,7 @@ class InstanceGenerator:
                 # generate farmer quantities
                 qs = []
                 for _ in range(n_farmers):
-                    q = rng.choice(self.hist_quantities[int_type], size=1, replace=True)[0]
+                    q = rng.choice(self.hist_quantities[int_type], replace=True)
                     qs.append(q)
                 qs = np.array(qs)
 

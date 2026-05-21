@@ -338,7 +338,7 @@ class Route:
         self.instance = instance
         
         self.cost = self.calculate_route_tree_cost()
-        self.is_feasible = (self.total_quantity > (self.instance.truck_capacity + 1e-6))
+        self.is_feasible = (self.total_quantity <= (self.instance.truck_capacity + 1e-6))
         self.value = self.total_quantity * self.instance.fruit_price - self.cost
 
     def __repr__(self) -> str:

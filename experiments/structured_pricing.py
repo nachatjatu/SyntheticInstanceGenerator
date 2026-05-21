@@ -22,13 +22,6 @@ if len(sys.argv) != 2:
 n_id = int(sys.argv[1])
 
 
-def set_reproducible_state(seed_val):
-    np.random.seed(seed_val)
-    random.seed(seed_val)
-    
-set_reproducible_state(n_id)
-
-
 # =========================
 # CONFIG
 # =========================

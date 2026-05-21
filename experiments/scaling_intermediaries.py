@@ -1,35 +1,34 @@
-"""Experiment 6 script: similar to experiment_4 with structured pricing.
-
-The routine performs a grid of heuristic runs, recording results for
-vanilla, structured, and domination pricing options.  The script accepts a
-single numeric argument and writes outputs to ``data/results_6``.
-
-Usage::
-    python experiments/experiment_6.py <n_id>
-"""
-
 import sys
-sys.path.insert(0, "src")  # src/ contains core library modules
+import json
+import pickle
+import numpy as np
+import pandas as pd
+from pathlib import Path
+
+sys.path.insert(0, "src")
 
 from farmers_intermediaries import Instance
 from road_graphs import RoadGraph
-import pickle
-import pandas as pd
-import pricing
 from pricing import Optimizer
-from datetime import datetime, timedelta
-import sys
-import numpy as np
-import json
 from instance_generator import InstanceGenerator
 
+
+# =========================
+# CLI ARGUMENTS
+# =========================
 if len(sys.argv) != 2:
-    raise ValueError("Please provide n_id as a single argument when running the script.")
+    raise ValueError("Please provide n_id as a single argument.")
+
 n_id = int(sys.argv[1])
 
+# =========================
+# CONFIG
+# =========================
+SIM_SIZE = 1
+N_INTS_LIST = [i for i in range(6, 30+1, 4)]
+N_INSTANCES = 4
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
-RESULTS_PATH = f"data/results_sc/{n_id}.json"
 
 FARMERS_PATH = "data/farmers.csv"
 INTS_PATH = "data/ints.csv"
@@ -49,57 +48,56 @@ with open(GRAPH_PATH, "rb") as f:
 # Initialize generator once
 instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
 
-np.random.seed(n_id) # set random seed for reproducibility and randomness
 
-sim_size = 1
-
-def reset_quantities():
-    return {farmer.id: min(max(np.floor((farmer.quantity + np.random.uniform(-0.5,0.5))*10)/10,0.1),9.0) for farmer in Platform.farmers}
-
-def reset_fixed_costs():
-    return {intermediary.id: Platform.dist_to_mill[intermediary.id]*4+np.random.normal(0, 100000) for intermediary in Platform.intermediaries}
-
-
-def diagnose_instance(platform):
-    route_totals = []
-
-    for intermediary in platform.intermediaries:
-        for hist_set in intermediary.additional_info["hist_sets"]:
-            q = sum(platform.farmer_by_id[f_id].quantity for f_id in hist_set)
-            route_totals.append(q)
-
-    total_quantity = sum(f.quantity for f in platform.farmers)
-
-    diagnostics = {
-        "n_farmers": len(platform.farmers),
-        "n_intermediaries": len(platform.intermediaries),
-        "total_quantity": float(total_quantity),
-        "hist_route_min": float(np.min(route_totals)) if route_totals else None,
-        "hist_route_mean": float(np.mean(route_totals)) if route_totals else None,
-        "hist_route_max": float(np.max(route_totals)) if route_totals else None,
-        "num_infeasible_hist_routes": int(sum(q > platform.truck_capacity for q in route_totals)),
-        "farmers_per_intermediary_mean": len(platform.farmers) / len(platform.intermediaries),
-        "quantity_per_intermediary_mean": total_quantity / len(platform.intermediaries),
+# =========================
+# STOCHASTIC COMPONENTS
+# =========================
+def reset_quantities(platform, rng):
+    return {
+        farmer.id: min(
+            max(
+                np.floor((farmer.quantity + rng.uniform(-0.5, 0.5)) * 10) / 10,
+                0.1,
+            ),
+            9.0,
+        )
+        for farmer in platform.farmers
     }
 
-    print("Instance diagnostics:", diagnostics)
-    return diagnostics
+
+def reset_fixed_costs(platform, rng):
+    return {
+        intermediary.id: (
+            platform.dist_to_mill[intermediary.id] * 4
+            + rng.normal(0, 100000)
+        )
+        for intermediary in platform.intermediaries
+    }
+
+
+def sample_epsilon(platform, rng):
+    return {
+        intermediary.id: rng.uniform(0, 6.0)
+        for intermediary in platform.intermediaries
+    }
+
+
+
 
 # =========================
 # CORE BUILDERS
 # =========================
-def build_instance(instance_id, seed=n_id):
+def build_instance(instance_id, n_ints, seed=n_id):
     """
     Generate a fresh instance and attach the road graph.
     """
-    instance_generator.gen_ints(14, seed)
+    instance_generator.gen_ints(n_ints, seed)
 
     instance_dict = instance_generator.gen_instance(
         instance_id,
         write=False,
         plot=False,
-        seed=seed,
-        scale_factor = 1.0
+        seed=seed
     )
 
     platform = Instance.from_dict(instance_dict)
@@ -108,74 +106,73 @@ def build_instance(instance_id, seed=n_id):
     return platform, instance_dict
 
 
-results = []
-print(f"Running grid")
-for sim_n in range(sim_size):
-    sampled_epsilon = 2
-
-    Platform, instance_dict = build_instance(1, seed=n_id)
-
-    diagnose_instance(Platform)
-    epsilon = {int.id: sampled_epsilon for int in Platform.intermediaries}
+def apply_quantity_perturbation(instance_dict, platform, rng):
+    """
+    Rebuild platform with perturbed quantities.
+    """
+    quantities = reset_quantities(platform, rng)
+    return Instance.from_dict(instance_dict, opt_quantities=quantities)
 
 
-    with open("data/graph_0-14960_00.pickle", 'rb') as pickle_file:
-        G = pickle.load(pickle_file)
+def run_single_simulation(instance_dict, platform, rng):
+    """
+    Runs one optimization on a (possibly perturbed) platform.
+    """
+    platform = apply_quantity_perturbation(instance_dict, platform, rng)
 
-    Platform.set_graph(RoadGraph(G))
+    platform.set_graph(RoadGraph(GRAPH))
 
-    #new_hist_matching = reset_relationships()
-    farmer_quantities = {farmer.id: farmer.quantity for farmer in Platform.farmers}
-    print(farmer_quantities)
-    print(f"Running simulation index {sim_n} of {sim_size}")
-    het_costs = reset_fixed_costs()
+    epsilon = sample_epsilon(platform, rng)
+    het_costs = reset_fixed_costs(platform, rng)
+
     parameters = {
-        "epsilon":epsilon, 
-        "solver": "gurobi", 
+        "epsilon": epsilon,
+        "solver": "gurobi",
         "het_costs": het_costs,
     }
-    farmer_dirt_to_mill = {farmer.id: farmer.dirt_to_mill for farmer in Platform.farmers}
-    farmer_paved_to_mill = {farmer.id: farmer.paved_to_mill for farmer in Platform.farmers}
 
-
-    opt = Optimizer(Platform, parameters)
+    opt = Optimizer(platform, parameters)
     base_matchings = opt.base_matchings
 
     summary_vanilla = opt.solve("heuristic_optimized", options={
         "structured_farmer_prices": False,
         "domination": False,})
     
-    opt = Optimizer(Platform, parameters, base_matchings=base_matchings)
+    opt = Optimizer(platform, parameters, base_matchings=base_matchings)
     
     summary_structured = opt.solve("heuristic_optimized", options={
         "structured_farmer_prices": True,
         "domination": False,})
     
-    opt = Optimizer(Platform, parameters, base_matchings=base_matchings)
+    opt = Optimizer(platform, parameters, base_matchings=base_matchings)
     
     summary_domination = opt.solve("heuristic_optimized", options={
         "structured_farmer_prices": False,
         "domination": True,})
 
-    results.append({
-        "instance_str": n_id,
-        "cost": het_costs,
+    # Collect outputs
+
+    farmer_quantities = {f.id: f.quantity for f in platform.farmers}
+
+    print(f"Profits are vanilla: {summary_vanilla.max_int_welf_sol.profit}, structured: {summary_structured.max_int_welf_sol.profit}, domination: {summary_domination.max_int_welf_sol.profit}")
+    print(f"Profit percentage is: {summary_vanilla.max_int_welf_sol.profit / (np.sum(list(farmer_quantities.values())) * platform.fruit_price)}")
+
+    return {
         "epsilon": epsilon,
+        "cost": het_costs,
         "farmer_quantities": farmer_quantities,
-        #"new_hist_matching": new_hist_matching,
         "summary_vanilla": summary_vanilla.to_dict(),
         "summary_structured": summary_structured.to_dict(),
         "summary_domination": summary_domination.to_dict(),
-        #"farmer_locations": farmer_locations,
-        "farmer_dirt_to_mill": farmer_dirt_to_mill,
-        "famer_paved_to_mill": farmer_paved_to_mill,
-    })
+        "farmer_dirt_to_mill": {f.id: f.dirt_to_mill for f in platform.farmers},
+        "farmer_paved_to_mill": {f.id: f.paved_to_mill for f in platform.farmers},
+    }
 
-    print(f"Simulation index {sim_n} completed with farmer_quantities {farmer_quantities} and het_costs {het_costs}")
-    print(f"Profits are vanilla: {summary_vanilla.max_int_welf_sol.profit}, structured: {summary_structured.max_int_welf_sol.profit}, domination: {summary_domination.max_int_welf_sol.profit}")
-    print(f"Profit percentage is: {summary_vanilla.max_int_welf_sol.profit / (np.sum(list(farmer_quantities.values())) * Platform.fruit_price)}")
 
-# Save the result to a JSON file
+
+# =========================
+# JSON SERIALIZATION
+# =========================
 def convert(obj):
     if isinstance(obj, (np.float64, np.int64)):
         return float(obj)
@@ -186,5 +183,42 @@ def convert(obj):
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-with open(f"data/results_6/{n_id}.json", 'w') as f:
-    json.dump(results, f, indent=4, default=convert)
+# =========================
+# MAIN EXPERIMENT LOOP
+# =========================
+def main():
+
+    n_ints = N_INTS_LIST[n_id % len(N_INTS_LIST)]
+    instance_id = (n_id // len(N_INTS_LIST)) % N_INSTANCES
+
+    print(f"Starting experiment {n_id} with {n_ints} ints and instance {instance_id}")
+
+    platform, instance_dict = build_instance(n_id, n_ints, seed=instance_id)
+
+    rng = np.random.default_rng(n_id)
+
+    # Run one stochastic solve
+    sim_result = run_single_simulation(instance_dict, platform, rng)
+
+    # Add metadata
+    sim_result.update({
+        "instance_id": instance_id,
+        "n_id": n_id,
+    })
+
+    # Save results
+    results_path = Path(f"data/results_scaling_ints/{instance_id}/{n_id}.json")
+
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(results_path, "w") as f:
+        json.dump(sim_result, f, indent=4, default=convert)
+
+    print(f"Results saved to {results_path}")
+
+
+# =========================
+# ENTRY POINT
+# =========================
+if __name__ == "__main__":
+    main()
