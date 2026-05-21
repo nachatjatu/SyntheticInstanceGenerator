@@ -146,33 +146,26 @@ class InstanceGenerator:
         self.sigmas = {int_id: self.find_mle_sigma_adaptive(int_id) for int_id in self.ints}
 
 
-    def gen_ints(self, n_ints, seed=390):
+    def gen_ints(self, n_ints, seed):
         """
         Samples synthetic intermediary locations within the bounding box.
         
         Args:
             n_ints (int): Number of intermediaries to generate.
         """
-        # seed
-        np.random.seed(seed)
-        random.seed(seed)
+        rng = np.random.default_rng(seed)
 
         ints = {}
         types = list(self.gamma_lookups.keys())
-        names = set({})
-        for _ in range(n_ints):
-            # generate unique name (prevent duplicates)
-            while True:
-                int_id = generate_name(style='capital')
-                if int_id not in names:
-                    names.add(int_id)
-                    break
 
-            int_type = random.choice(types)
+        for i in range(n_ints):
+            int_id = f'int_{i}'
+
+            int_type = rng.choice(types)
             
             # rejection sampling within bounding box
             while True:
-                sample = self.int_spatial_kde.resample(1).flatten()
+                sample = self.int_spatial_kde.resample(1, seed=rng).flatten()
                 if (self.bbox_m[0] <= sample[0] <= self.bbox_m[2] and 
                     self.bbox_m[1] <= sample[1] <= self.bbox_m[3]):
                     int_xy = sample
@@ -183,7 +176,7 @@ class InstanceGenerator:
         self.ints = ints
 
 
-    def gen_farmers(self, int_xy, int_type, n_farmers, sigma=500, int_seed=390):
+    def gen_farmers(self, int_xy, int_type, n_farmers, rng, sigma=500):
         """
         Samples farmer locations using a sequential clustering process.
         
@@ -193,10 +186,6 @@ class InstanceGenerator:
             n_farmers (int): Number of farmers to sample.
             sigma (float): Bandwidth for clustering influence.
         """
-
-        # seed
-        np.random.seed(int_seed)
-        random.seed(int_seed)
 
         # precompute distances from grid to int
         dist_lookup = self.gamma_lookups[int_type]
@@ -209,7 +198,7 @@ class InstanceGenerator:
         log_p_base -= logsumexp(log_p_base)
 
         locs = []
-        sigma_sq_2 = 2 * (sigma**2)
+        sigma_sq_2 = 2 * (sigma ** 2)
         acc_exp_kernels = np.zeros(len(grid_points))
 
         for k in range(n_farmers):
@@ -228,7 +217,7 @@ class InstanceGenerator:
                 p_sampling = self.p_spatial
 
             # sample farmer locations
-            idx = np.random.choice(len(p_sampling), p=p_sampling/p_sampling.sum())
+            idx = rng.choice(len(p_sampling), p=p_sampling/p_sampling.sum())
             sampled_xy = self.grid_coords[:, idx]
             locs.append(sampled_xy)
             
@@ -239,7 +228,7 @@ class InstanceGenerator:
         return np.array(locs)
     
 
-    def gen_instance(self, instance_id, write=True, plot=True, scale_factor=1.0, seed=390):
+    def gen_instance(self, instance_id, seed, write=True, plot=True, scale_factor=1.0):
         """
         Orchestrates full instance generation and saves to YAML.
         
@@ -253,32 +242,41 @@ class InstanceGenerator:
 
         farmers, ints = [], []
 
-        for int_id, int_data in self.ints.items():
-            # generate intermediary-specific seed
-            int_seed = seed + zlib.crc32(int_id.encode()) % 1000000
+        ss = np.random.SeedSequence(seed)
+        int_ids = list(self.ints.keys())
 
-            # seed generations
-            np.random.seed(int_seed)
-            random.seed(int_seed)
+        # One independent RNG stream per intermediary
+        child_seeds = ss.spawn(len(int_ids))
+        rngs = {
+            int_id: np.random.default_rng(child_seed)
+            for int_id, child_seed in zip(int_ids, child_seeds)
+        }
+
+        for int_id in int_ids:
+
+            int_data = self.ints[int_id]
+
+            # get int's seed
+            rng = rngs[int_id]
 
             # sample intermediary type and location
             int_type, int_xy, int_ll = int_data['type'], int_data['xy'], int_data['ll']
 
             # sample number of farmers in intermediary's network
-            n_farmers = np.random.choice(self.hist_n_farmers[int_type])
+            
+            n_farmers = rng.choice(self.hist_n_farmers[int_type])
             raw_n = n_farmers * scale_factor
-            n_farmers = int(np.floor(raw_n) + (np.random.rand() < (raw_n % 1))) # Bernoulli using scale_factor
+            n_farmers = int(np.floor(raw_n) + (rng.random() < (raw_n % 1))) # Bernoulli using scale_factor
             
             if n_farmers > 0:
                 # generate farmer locations
                 sigma = self.sigmas.get(int_type, 5000)
-                farmer_xys = self.gen_farmers(int_xy, int_type, n_farmers, sigma=sigma, int_seed=int_seed)
+                farmer_xys = self.gen_farmers(int_xy, int_type, n_farmers, rng, sigma=sigma)
 
                 # generate farmer quantities
-                np.random.seed(int_seed)
                 qs = []
                 for _ in range(n_farmers):
-                    q = np.random.choice(self.hist_quantities[int_type], size=1, replace=True)[0]
+                    q = rng.choice(self.hist_quantities[int_type], size=1, replace=True)[0]
                     qs.append(q)
                 qs = np.array(qs)
 

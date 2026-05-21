@@ -32,7 +32,7 @@ set_reproducible_state(n_id)
 # =========================
 # CONFIG
 # =========================
-SIM_SIZE = 10
+SIM_SIZE = 1
 N_INTS = 10
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
@@ -151,17 +151,25 @@ def run_single_simulation(instance_dict, platform):
     summary_domination = opt.solve("heuristic_optimized", options={
         "structured_farmer_prices": False,
         "domination": True,})
+    
+    farmer_quantities = {f.id: f.quantity for f in platform.farmers}
+    
+    print(f"Simulation completed with farmer_quantities {farmer_quantities} and het_costs {het_costs}")
+    print(f"Profits are vanilla: {summary_vanilla.max_int_welf_sol.profit /14500.0}, structured: {summary_structured.max_int_welf_sol.profit/14500.0}, domination: {summary_domination.max_int_welf_sol.profit/14500.0}")
+    print(f"Profit percentage is: {summary_vanilla.max_int_welf_sol.profit / (np.sum(list(farmer_quantities.values())) * platform.fruit_price)}")
 
     return {
         "cost": het_costs,
         "epsilon": epsilon,
-        "farmer_quantities": {f.id: f.quantity for f in platform.farmers},
+        "farmer_quantities": farmer_quantities,
         "summary_vanilla": summary_vanilla.to_dict(),
         "summary_structured": summary_structured.to_dict(),
         "summary_domination": summary_domination.to_dict(),
         "farmer_dirt_to_mill": {f.id: f.dirt_to_mill for f in platform.farmers},
         "famer_paved_to_mill": {f.id: f.paved_to_mill for f in platform.farmers},
     }
+
+    
 
 
 # =========================

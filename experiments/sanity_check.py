@@ -22,18 +22,11 @@ if len(sys.argv) != 2:
 n_id = int(sys.argv[1])
 
 
-def set_reproducible_state(seed_val):
-    np.random.seed(seed_val)
-    random.seed(seed_val)
-    
-set_reproducible_state(n_id)
-
-
 # =========================
 # CONFIG
 # =========================
-SIM_SIZE = 1
-N_INTS = 1
+SIM_SIZE = 10
+N_INTS = 14
 
 GRAPH_PATH = "data/graph_0-14960_00.pickle"
 RESULTS_PATH = f"data/results_sc/{n_id}.json"
@@ -60,11 +53,11 @@ instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
 # =========================
 # STOCHASTIC COMPONENTS
 # =========================
-def reset_quantities(platform):
+def reset_quantities(platform, rng):
     return {
         farmer.id: min(
             max(
-                np.floor((farmer.quantity + np.random.uniform(-0.5, 0.5)) * 10) / 10,
+                np.floor((farmer.quantity + rng.uniform(-0.5, 0.5)) * 10) / 10,
                 0.1,
             ),
             9.0,
@@ -73,19 +66,19 @@ def reset_quantities(platform):
     }
 
 
-def reset_fixed_costs(platform):
+def reset_fixed_costs(platform, rng):
     return {
         intermediary.id: (
             platform.dist_to_mill[intermediary.id] * 4
-            + np.random.normal(0, 100000)
+            + rng.normal(0, 100000)
         )
         for intermediary in platform.intermediaries
     }
 
 
-def sample_epsilon(platform):
+def sample_epsilon(platform, rng):
     return {
-        intermediary.id: np.random.uniform(0, 6.0)
+        intermediary.id: rng.uniform(0, 6.0)
         for intermediary in platform.intermediaries
     }
 
@@ -103,7 +96,6 @@ def build_instance(instance_id, seed=n_id):
         instance_id,
         write=False,
         plot=False,
-        scale_factor=3,
         seed=seed
     )
 
@@ -113,24 +105,24 @@ def build_instance(instance_id, seed=n_id):
     return platform, instance_dict
 
 
-def apply_quantity_perturbation(instance_dict, platform):
+def apply_quantity_perturbation(instance_dict, platform, rng):
     """
     Rebuild platform with perturbed quantities.
     """
-    quantities = reset_quantities(platform)
+    quantities = reset_quantities(platform, rng)
     return Instance.from_dict(instance_dict, opt_quantities=quantities)
 
 
-def run_single_simulation(instance_dict, platform):
+def run_single_simulation(instance_dict, platform, rng):
     """
     Runs one optimization on a (possibly perturbed) platform.
     """
-    platform = apply_quantity_perturbation(instance_dict, platform)
+    platform = apply_quantity_perturbation(instance_dict, platform, rng)
 
     platform.set_graph(RoadGraph(GRAPH))
 
-    epsilon = sample_epsilon(platform)
-    het_costs = reset_fixed_costs(platform)
+    epsilon = sample_epsilon(platform, rng)
+    het_costs = reset_fixed_costs(platform, rng)
 
     parameters = {
         "epsilon": epsilon,
@@ -176,23 +168,22 @@ def convert(obj):
 # MAIN EXPERIMENT LOOP
 # =========================
 def main():
+
     results = []
 
     print(f"Starting experiment batch n_id={n_id}")
 
-    for sim_n in range(SIM_SIZE):
-        print(f"--- Simulation {sim_n + 1}/{SIM_SIZE} ---")
+    platform, instance_dict = build_instance(n_id, seed=n_id)
+
+    rng = np.random.default_rng(n_id)
+
+    for sim_n in range(1, SIM_SIZE + 1):
+        print(f"--- Simulation {sim_n}/{SIM_SIZE} ---")
 
         instance_id = f"{n_id}_{sim_n}"
 
-
-        # Build new instance (between-instance variation)
-        platform, instance_dict = build_instance(instance_id, seed=n_id)
-
-        print(instance_dict['farmers'])
-
         # Run one stochastic solve
-        sim_result = run_single_simulation(instance_dict, platform)
+        sim_result = run_single_simulation(instance_dict, platform, rng)
 
         # Add metadata
         sim_result.update({
