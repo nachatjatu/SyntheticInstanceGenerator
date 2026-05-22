@@ -165,7 +165,7 @@ def main():
     })
 
     # save results
-    results_path = Path(f"data/results_scaling_ints/{instance_id}/{n_id}.json")
+    results_path = Path(f"data/results_scaling_ints/{n_id}.json")
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
     

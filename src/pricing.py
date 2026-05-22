@@ -267,16 +267,16 @@ class Optimizer:
                 rels.append((intermediary2.id, intermediary1.id))
 
         # ORIGINAL
-        rels = []
-        for intermediary1 in self.instance.intermediaries:
-            for intermediary2 in self.instance.intermediaries:
-                if intermediary1.id == intermediary2.id:
-                    continue
-                if self.het_costs[intermediary1.id] < self.het_costs[intermediary2.id]:
-                    int_1_hist_fruit = 1/len(intermediary1.additional_info["hist_sets"])*sum(sum(farmer.quantity for farmer in self.instance.farmers if farmer.id in hist_set) for hist_set in intermediary1.additional_info["hist_sets"])
-                    int_2_hist_fruit = 1/len(intermediary2.additional_info["hist_sets"])*sum(sum(farmer.quantity for farmer in self.instance.farmers if farmer.id in hist_set) for hist_set in intermediary2.additional_info["hist_sets"])
-                    if int_1_hist_fruit >= int_2_hist_fruit:
-                        rels.append((intermediary1.id, intermediary2.id))
+        # rels = []
+        # for intermediary1 in self.instance.intermediaries:
+        #     for intermediary2 in self.instance.intermediaries:
+        #         if intermediary1.id == intermediary2.id:
+        #             continue
+        #         if self.het_costs[intermediary1.id] < self.het_costs[intermediary2.id]:
+        #             int_1_hist_fruit = 1/len(intermediary1.additional_info["hist_sets"])*sum(sum(farmer.quantity for farmer in self.instance.farmers if farmer.id in hist_set) for hist_set in intermediary1.additional_info["hist_sets"])
+        #             int_2_hist_fruit = 1/len(intermediary2.additional_info["hist_sets"])*sum(sum(farmer.quantity for farmer in self.instance.farmers if farmer.id in hist_set) for hist_set in intermediary2.additional_info["hist_sets"])
+        #             if int_1_hist_fruit >= int_2_hist_fruit:
+        #                 rels.append((intermediary1.id, intermediary2.id))
                         #print(f"Intermediary {intermediary1.id} dominates {intermediary2.id} with costs {self.het_costs[intermediary1.id]} < {self.het_costs[intermediary2.id]} and hist fruit {int_1_hist_fruit} >= {int_2_hist_fruit}")
         print(" Dominance relations ".center(80, '-'))
         pprint(rels)
@@ -514,7 +514,7 @@ class Optimizer:
         if len(branch.matching) == 0 and len(branch.unmatching) == 0:
             self.instance_summary.forced_upper_bound = forced_ub["profit"]
 
-        print(f'Forced UB {forced_ub['profit']}')
+        print(f"Forced UB {forced_ub['profit']}")
         print("Min Cost Set:")
         pprint(branch.min_cost_set)
         print()
@@ -573,7 +573,7 @@ class Optimizer:
                 print("No more active branches, stopping\n")
                 break
             print(f"Currently a total of {len(active_branches)} branches in the queue")
-            print(f"Upper bounds of active branches: {[branch['branch_profits'][branch["branch_on"]] for branch in active_branches]}")
+            print(f"Upper bounds of active branches: {[branch['branch_profits'][branch['branch_on']] for branch in active_branches]}")
 
             for branch in active_branches:
                 if branch["upper_bound"] < self.best_lb:
