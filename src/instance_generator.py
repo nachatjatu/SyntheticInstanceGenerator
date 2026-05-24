@@ -27,9 +27,9 @@ class InstanceGenerator:
         self.ll_to_xy = Transformer.from_crs(LL_CRS, INDO_CRS, always_xy=True)
 
         # load data
-        self.farmers_df = farmers_df
+        self.farmers_df = farmers_df[farmers_df.int_id != 'Ndoharo']
         self.farmers_2_df = farmers_2_df
-        self.ints_df = ints_df
+        self.ints_df = ints_df[ints_df.int_id != 'Ndoharo']
         self.G_proj, self.bbox_m = self._init_graph(graph_path)
         
         # create spacial grid
@@ -66,7 +66,8 @@ class InstanceGenerator:
             'Agus Wibowo': 12000, 'Nurmala': 13500, 'yaya suhayat': 12500,
             'Agus Yasir': 6500, 'Ngatinu': 5500, 'Samsuri': 13000,
             'Riki Mandala': 30500, 'Syafrial': 9500, 'Yaman Saragih': 3500,
-            'Khairul': 4500, 'Ndoharo': 2500
+            'Khairul': 4500, 
+            # 'Ndoharo': 2500
         }
 
     def _init_graph(self, graph_path):
