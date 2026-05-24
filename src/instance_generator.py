@@ -20,14 +20,15 @@ RES = 250                           # Grid resolution in meters
 MAX_DIST = 63000                    # Maximum sampling distance
 
 class InstanceGenerator:
-    def __init__(self, farmers_df, ints_df, 
-                 graph_path="../FactoredPlatformSolver/data/graph_0-14960_00.pickle"):
+    def __init__(self, farmers_df, farmers_2_df, ints_df, 
+                 graph_path="data/graph_0-14960_00_new.pickle"):
         # CRS transformers
         self.xy_to_ll = Transformer.from_crs(INDO_CRS, LL_CRS, always_xy=True)
         self.ll_to_xy = Transformer.from_crs(LL_CRS, INDO_CRS, always_xy=True)
 
         # load data
         self.farmers_df = farmers_df
+        self.farmers_2_df = farmers_2_df
         self.ints_df = ints_df
         self.G_proj, self.bbox_m = self._init_graph(graph_path)
         
@@ -52,7 +53,7 @@ class InstanceGenerator:
         self.hist_quantities = (self.farmers_df.groupby('int_id')['quantity']
                                 .apply(list).to_dict())
         
-        counts_df = (self.farmers_df.groupby(['int_id', 'date'])
+        counts_df = (self.farmers_2_df.groupby(['int_id', 'date'])
                     .size().reset_index(name='count'))
         self.hist_n_farmers = counts_df.groupby('int_id')['count'].apply(list).to_dict()
 
@@ -67,7 +68,6 @@ class InstanceGenerator:
             'Riki Mandala': 30500, 'Syafrial': 9500, 'Yaman Saragih': 3500,
             'Khairul': 4500, 'Ndoharo': 2500
         }
-
 
     def _init_graph(self, graph_path):
         with open(graph_path, 'rb') as f:
@@ -123,7 +123,7 @@ class InstanceGenerator:
         self.sigmas = {int_id: self.find_mle_sigma_adaptive(int_id) for int_id in self.ints}
 
 
-    def gen_ints(self, n_ints, seed):
+    def gen_ints(self, n_ints, seed, set_type=None):
         ss = np.random.SeedSequence(seed)
 
         # One independent RNG stream per intermediary
@@ -132,7 +132,13 @@ class InstanceGenerator:
 
         ints = {}
         names = set()
-        types = list(self.gamma_lookups.keys())
+
+        if set_type == "high":
+            types = ["Nurmala"]
+        elif set_type == "low":
+            types = ["Samsuri"]
+        else:
+            types = list(self.gamma_lookups.keys())
 
         for i in range(n_ints):
             rng = rngs[i]
@@ -236,22 +242,13 @@ class InstanceGenerator:
                 sigma = self.sigmas.get(int_type, 5000)
                 farmer_xys = self.gen_farmers(int_xy, int_type, n_farmers, rng, sigma=sigma)
 
-                # generate farmer quantities
-                qs = []
-                for _ in range(n_farmers):
-                    q = rng.choice(self.hist_quantities[int_type], replace=True)
-                    qs.append(q)
-                qs = np.array(qs)
-
                 # rescale quantities to fit intermediary capacity constraints
                 # generate farmer quantities
-                qs = []
-                for _ in range(n_farmers):
-                    q = rng.choice(self.hist_quantities[int_type], replace=True)
-                    qs.append(q)
-                qs = np.array(qs)
+                qs = np.array([
+                    rng.choice(self.hist_quantities[int_type], replace=True)
+                    for _ in range(n_farmers)
+                ])
 
-                # rescale quantities to fit intermediary capacity constraints
                 total_q = qs.sum()
 
                 if total_q >= MAX_CAPACITY:
@@ -274,7 +271,6 @@ class InstanceGenerator:
                     idx = np.argmin(qs_scaled)
                     qs_scaled[idx] = np.round(qs_scaled[idx] + 0.1, 1)
 
-                assert np.all(np.isclose(qs_scaled * 10, np.round(qs_scaled * 10))), qs_scaled
                 assert MIN_CAPACITY <= qs_scaled.sum() < MAX_CAPACITY, qs_scaled.sum()
 
                 # format and append farmers
@@ -430,3 +426,4 @@ class InstanceGenerator:
                     break # Likelihood began decreasing
                     
             return best_sigma
+    

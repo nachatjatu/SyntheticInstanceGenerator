@@ -175,7 +175,12 @@ class Optimizer:
     def __init__(self, instance: Instance, parameters: dict, base_matchings=None):
         
         self.instance = instance
-        self.feas_hist()
+        self.instance = instance
+
+        if not parameters.get("disable_aggregation", False):
+            self.feas_hist()
+        else:
+            self.validate_hist_sets()
 
         self.tsp_solver = dynamic_TSPSolver(self.instance)
         
@@ -187,8 +192,6 @@ class Optimizer:
             self.vrp_solver = VRPSolver(self.instance)
         else:
             raise ValueError(f"Solver {self.solver} is not supported. Supported solvers are: 'gurobi'.")
-        # elif self.solver == "ORTools":
-        #     self.vrp_solver = ORToolsVRPSolver(self.instance)
 
         self.parameters = parameters
         self.het_costs = parameters["het_costs"]
@@ -214,6 +217,19 @@ class Optimizer:
             "callback": 0,
             "total": 0,
         }
+
+
+    def validate_hist_sets(self):
+        for intermediary in self.instance.intermediaries:
+            hist_sets = intermediary.additional_info.get("hist_sets", [])
+
+            if not hist_sets:
+                # Fallback: singleton empty sample
+                intermediary.additional_info["hist_sets"] = [frozenset()]
+            else:
+                intermediary.additional_info["hist_sets"] = [
+                    frozenset(h) for h in hist_sets
+                ]
 
     def feas_hist(self):
         """Compute a single feasible history set for each intermediary.
@@ -266,18 +282,7 @@ class Optimizer:
             if het_costs_2 < het_costs_1 and hist_fruits_2 >= hist_fruits_1:
                 rels.append((intermediary2.id, intermediary1.id))
 
-        # ORIGINAL
-        # rels = []
-        # for intermediary1 in self.instance.intermediaries:
-        #     for intermediary2 in self.instance.intermediaries:
-        #         if intermediary1.id == intermediary2.id:
-        #             continue
-        #         if self.het_costs[intermediary1.id] < self.het_costs[intermediary2.id]:
-        #             int_1_hist_fruit = 1/len(intermediary1.additional_info["hist_sets"])*sum(sum(farmer.quantity for farmer in self.instance.farmers if farmer.id in hist_set) for hist_set in intermediary1.additional_info["hist_sets"])
-        #             int_2_hist_fruit = 1/len(intermediary2.additional_info["hist_sets"])*sum(sum(farmer.quantity for farmer in self.instance.farmers if farmer.id in hist_set) for hist_set in intermediary2.additional_info["hist_sets"])
-        #             if int_1_hist_fruit >= int_2_hist_fruit:
-        #                 rels.append((intermediary1.id, intermediary2.id))
-                        #print(f"Intermediary {intermediary1.id} dominates {intermediary2.id} with costs {self.het_costs[intermediary1.id]} < {self.het_costs[intermediary2.id]} and hist fruit {int_1_hist_fruit} >= {int_2_hist_fruit}")
+    
         print(" Dominance relations ".center(80, '-'))
         pprint(rels)
         print()
@@ -292,11 +297,6 @@ class Optimizer:
         also used to determine ``min_trucks`` and ``max_trucks``.
         """
 
-        # Load the matchings from a pickle file if it exists
-        # try:
-        #     with open(f"{self.instance.source}_matchings.pkl", "rb") as f:
-        #         all_matchings = pickle.load(f)
-        # except FileNotFoundError:
         all_matchings = {}
         # We solve a VRP with 1 to n_intermediaries
         print(" Solving VRP ".center(80, '-'))
@@ -320,10 +320,7 @@ class Optimizer:
             min_cost_matching = self.vrp_solver.solve()
             print(f"\tObjective: {min_cost_matching.cost}")
             all_matchings[len(min_cost_matching.routes)] = min_cost_matching
-            
-        # # Store the matchings as a pickle file using the instance source
-        # with open(f"{self.instance.source}_matchings.pkl", "wb") as f:
-        #     pickle.dump(all_matchings, f)
+        
             
         self.min_trucks = min(all_matchings.keys())
         self.max_trucks = max(all_matchings.keys())
@@ -368,12 +365,13 @@ class Optimizer:
         """
         for intermediary in self.instance.intermediaries:
             for hist_set_index, hist_set in enumerate(intermediary.additional_info["hist_sets"]):
-                left_cut = (route.value - self.het_costs[intermediary.id] - gp.quicksum(farmer_prices[f.id] for f in route.farmers) - eta[intermediary.id] * sum(farmer.quantity for farmer in route.farmers if farmer.id not in hist_set) - kappa[intermediary.id, hist_set_index])
-                
-                # [Q]: is this comment intentional?
-
-                #violation = (route.value - sum(add_info["farmer_prices"][f.id] for f in route.farmers) - add_info["eta"][intermediary.id] * sum(farmer.quantity for farmer in route.farmers if farmer.id not in hist_set)- add_info["kappa"][intermediary.id, hist_set_index])
-                #if (violation > Optimizer.TOLERANCE):
+                left_cut = (
+                    route.value 
+                    - self.het_costs[intermediary.id] - gp.quicksum(farmer_prices[f.id] for f in route.farmers)
+                    - eta[intermediary.id] * sum(farmer.quantity for farmer in route.farmers if farmer.id not in hist_set) 
+                    - kappa[intermediary.id, hist_set_index]
+                )
+            
                 model.addConstr(left_cut<=0)
 
     def solve_branch_exact(self, branch):
