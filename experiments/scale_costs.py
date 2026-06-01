@@ -190,7 +190,7 @@ def main():
         results.append(sim_result)
 
     # save results
-    results_path = Path(f"results/scale_fixed_costs/{n_id}.json")
+    results_path = Path(f"results/scale_costs/{n_id}.json")
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
     
