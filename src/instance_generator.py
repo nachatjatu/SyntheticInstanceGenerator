@@ -18,18 +18,19 @@ LL_CRS = "EPSG:4326"                # WGS84 Lat/Lon
 MIN_CAPACITY, MAX_CAPACITY = 2, 9
 RES = 250                           # Grid resolution in meters
 MAX_DIST = 63000                    # Maximum sampling distance
+EXCLUDE_INTS = ["Ndoharo", "Yaman Saragih"]
 
 class InstanceGenerator:
-    def __init__(self, farmers_df, farmers_2_df, ints_df, 
+    def __init__(self, farmers_full_df, farmers_14_df, ints_df, 
                  graph_path="data/graph_0-14960_00_new.pickle"):
         # CRS transformers
         self.xy_to_ll = Transformer.from_crs(INDO_CRS, LL_CRS, always_xy=True)
         self.ll_to_xy = Transformer.from_crs(LL_CRS, INDO_CRS, always_xy=True)
 
-        # load data
-        self.farmers_df = farmers_df[farmers_df.int_id != 'Ndoharo']
-        self.farmers_2_df = farmers_2_df
-        self.ints_df = ints_df[ints_df.int_id != 'Ndoharo']
+        # load data~df['col'].isin(my_list)
+        self.farmers_full_df = farmers_full_df[~farmers_full_df.int_id.isin(EXCLUDE_INTS)]
+        self.farmers_14_df = farmers_14_df
+        self.ints_df = ints_df[~ints_df.int_id.isin(EXCLUDE_INTS)]
         self.G_proj, self.bbox_m = self._init_graph(graph_path)
         
         # create spacial grid
@@ -50,10 +51,10 @@ class InstanceGenerator:
         self.gamma_lookups = self._init_gamma_kdes()
 
         # cache historical statistics
-        self.hist_quantities = (self.farmers_df.groupby('int_id')['quantity']
+        self.hist_quantities = (self.farmers_14_df.groupby('int_id')['quantity']
                                 .apply(list).to_dict())
         
-        counts_df = (self.farmers_2_df.groupby(['int_id', 'date'])
+        counts_df = (self.farmers_14_df.groupby(['int_id', 'date'])
                     .size().reset_index(name='count'))
         self.hist_n_farmers = counts_df.groupby('int_id')['count'].apply(list).to_dict()
 
@@ -67,7 +68,6 @@ class InstanceGenerator:
             'Agus Yasir': 6500, 'Ngatinu': 5500, 'Samsuri': 13000,
             'Riki Mandala': 30500, 'Syafrial': 9500, 'Yaman Saragih': 3500,
             'Khairul': 4500, 
-            # 'Ndoharo': 2500
         }
 
     def _init_graph(self, graph_path):
@@ -84,12 +84,12 @@ class InstanceGenerator:
 
 
     def _init_farmer_kde(self, farmer_bw=0.2):
-        coords = self.farmers_df.drop_duplicates(['farmer_x', 'farmer_y'])[['farmer_x', 'farmer_y']].T
+        coords = self.farmers_full_df.drop_duplicates(['farmer_x', 'farmer_y'])[['farmer_x', 'farmer_y']].T
         return gaussian_kde(coords, bw_method=farmer_bw)
     
     
     def _init_gamma_kdes(self):
-        int_to_dists = (self.farmers_df
+        int_to_dists = (self.farmers_full_df
                         .drop_duplicates(['int_id', 'farmer_x', 'farmer_y'])
                         .groupby('int_id')['distance']
                         .apply(np.array).to_dict())
@@ -136,6 +136,8 @@ class InstanceGenerator:
 
         if set_type == "high":
             types = ["Nurmala"]
+        elif set_type == "medium":
+            types = ["Ngatinu"]
         elif set_type == "low":
             types = ["Samsuri"]
         else:
@@ -208,7 +210,7 @@ class InstanceGenerator:
         return np.array(locs)
     
 
-    def gen_instance(self, instance_id, seed, write=False, plot=False, scale_factor=1.0):
+    def gen_instance(self, instance_id, seed, write=False, plot=False, scale_factor=1.0, sigma=None):
 
         farmers, ints = [], []
 
@@ -233,14 +235,15 @@ class InstanceGenerator:
             int_type, int_xy, int_ll = int_data['type'], int_data['xy'], int_data['ll']
 
             # sample number of farmers in intermediary's network
-            
             n_farmers = rng.choice(self.hist_n_farmers[int_type])
             raw_n = n_farmers * scale_factor
             n_farmers = int(np.floor(raw_n) + (rng.random() < (raw_n % 1))) # Bernoulli using scale_factor
             
             if n_farmers > 0:
                 # generate farmer locations
-                sigma = self.sigmas.get(int_type, 5000)
+                if not sigma:
+                    sigma = self.sigmas.get(int_type, 5000)
+                    
                 farmer_xys = self.gen_farmers(int_xy, int_type, n_farmers, rng, sigma=sigma)
 
                 # rescale quantities to fit intermediary capacity constraints

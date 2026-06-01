@@ -27,8 +27,9 @@ n_id = int(sys.argv[1])
 # CONFIG
 # =========================
 TEXTWIDTH = 80
-SIM_SIZE = 10
-N_INTS = 12
+SIM_SIZE = 1
+N_INTS = 10
+MULTIPLIER = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3]
 
 GRAPH_PATH = "data/graph_0-14960_00_new.pickle"
 FARMERS_PATH = "data/farmers.csv"
@@ -40,13 +41,19 @@ INTS_PATH = "data/ints.csv"
 # =========================
 
 
-def run_single_simulation(platform, graph, seed):
+def run_single_simulation(platform, graph, seed, sampled_multiplier):
 
     rng = np.random.default_rng(seed)
     platform.set_graph(RoadGraph(graph))
 
     epsilon = {intermediary.id: rng.uniform(0, 6.0) for intermediary in platform.intermediaries}
-    het_costs = {intermediary.id: (platform.dist_to_mill[intermediary.id] * 4) for intermediary in platform.intermediaries}
+    het_costs = {
+        intermediary.id: platform.dist_to_mill[intermediary.id] * 4
+        for intermediary in platform.intermediaries
+    }
+
+    base_cost_per_meter = platform.cost_per_meter
+    platform.cost_per_meter = base_cost_per_meter * sampled_multiplier
 
     parameters = {
         "epsilon": epsilon,
@@ -61,6 +68,13 @@ def run_single_simulation(platform, graph, seed):
         "domination": False,})
 
     farmer_quantities = {f.id: f.quantity for f in platform.farmers}
+
+
+    print(" Profits ".center(TEXTWIDTH, "-"))
+    print(f"Vanilla: {summary_vanilla.max_int_welf_sol.profit}")
+    print(f"Total Fruit Value: {(np.sum(list(farmer_quantities.values())) * platform.fruit_price)}")
+    print(f"Vanilla Profit %: {summary_vanilla.max_int_welf_sol.profit / (np.sum(list(farmer_quantities.values())) * platform.fruit_price) * 100}")
+    print()
 
     return {
         "epsilon": epsilon,
@@ -111,11 +125,14 @@ def main():
     root_ss = np.random.SeedSequence(root_seed)
 
     sim_seed_sequences = root_ss.spawn(SIM_SIZE)
+
+    sampled_multiplier_idx = n_id % len(MULTIPLIER)
+    sampled_multiplier = MULTIPLIER[sampled_multiplier_idx]
     
     for sim_n, sim_ss in enumerate(sim_seed_sequences):
         instance_id = f'{n_id}_{sim_n}'
 
-        msg = f" Experiment {sim_n}: n_ints = {N_INTS}, instance_seed = {n_id} "
+        msg = f" Experiment {sim_n}: n_ints = {N_INTS}, instance_seed = {n_id}, multiplier = {sampled_multiplier} "
         print(msg.center(TEXTWIDTH, "="))
         print()
 
@@ -134,7 +151,7 @@ def main():
         print(msg.center(TEXTWIDTH, "="))
         print()
 
-        instance_generator.gen_ints(N_INTS, gen_ints_seed)
+        instance_generator.gen_ints(N_INTS, gen_ints_seed, set_type="medium")
 
         instance_dict = instance_generator.gen_instance(
             instance_id,
@@ -157,11 +174,12 @@ def main():
 
 
         # run one stochastic solve
-        sim_result = run_single_simulation(platform, graph, solve_seed)
+        sim_result = run_single_simulation(platform, graph, solve_seed, sampled_multiplier)
 
         # add metadata
         sim_result.update({
             "instance_id": instance_id,
+            "multiplier": sampled_multiplier,
             "root_seed": root_seed,
             "sim_n": sim_n,
             "gen_ints_seed": gen_ints_seed,
@@ -172,7 +190,7 @@ def main():
         results.append(sim_result)
 
     # save results
-    results_path = Path(f"results/exp_4_new/{n_id}.json")
+    results_path = Path(f"results/scale_fixed_costs/{n_id}.json")
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
     

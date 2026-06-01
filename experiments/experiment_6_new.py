@@ -28,12 +28,12 @@ n_id = int(sys.argv[1])
 # =========================
 TEXTWIDTH = 80
 SIM_SIZE = 10
-N_INTS = 14
+N_INTS = 12
 EPSILONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-
 
 GRAPH_PATH = "data/graph_0-14960_00_new.pickle"
 FARMERS_PATH = "data/farmers.csv"
+FARMERS_2_PATH = "data/farmers_2.csv"
 INTS_PATH = "data/ints.csv"
 
 # =========================
@@ -118,12 +118,13 @@ def make_int_seed(seed_seq: np.random.SeedSequence) -> int:
 def main():
     # load static data
     farmers_df = pd.read_csv(FARMERS_PATH)
+    farmers_2_df = pd.read_csv(FARMERS_2_PATH)
     ints_df = pd.read_csv(INTS_PATH)
     with open(GRAPH_PATH, "rb") as f:
         graph = pickle.load(f)
 
     # initialize generator and platform
-    instance_generator = InstanceGenerator(farmers_df, ints_df, GRAPH_PATH)
+    instance_generator = InstanceGenerator(farmers_df, farmers_2_df, ints_df, GRAPH_PATH)
     sampled_epsilon = EPSILONS[n_id % len(EPSILONS)] # cycle through epsilon
 
     results = []
@@ -191,7 +192,7 @@ def main():
         results.append(sim_result)
 
     # save results
-    results_path = Path(f"data/results_exp_6_new/{n_id}.json")
+    results_path = Path(f"results/exp_6_new/{n_id}.json")
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
     

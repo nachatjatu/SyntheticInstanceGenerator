@@ -135,7 +135,7 @@ class VRPSolver:
         """
         model = gp.Model("VRP")
         model.setParam("Threads", get_solver_threads())
-        model.setParam("TimeLimit", 3600)
+        model.setParam("TimeLimit", 2000) 
 
         # Add binary variables for each farmer and intermediary
         farmer_ids = [farmer.id for farmer in self.instance.farmers]

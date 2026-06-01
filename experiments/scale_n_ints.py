@@ -27,8 +27,8 @@ n_id = int(sys.argv[1])
 # CONFIG
 # =========================
 TEXTWIDTH = 80
-SIM_SIZE = 10
-N_INTS = 12
+SIM_SIZE = 5
+N_INTS = [10, 12, 14, 16, 18, 20]
 
 GRAPH_PATH = "data/graph_0-14960_00_new.pickle"
 FARMERS_PATH = "data/farmers.csv"
@@ -45,7 +45,7 @@ def run_single_simulation(platform, graph, seed):
     rng = np.random.default_rng(seed)
     platform.set_graph(RoadGraph(graph))
 
-    epsilon = {intermediary.id: rng.uniform(0, 6.0) for intermediary in platform.intermediaries}
+    epsilon = {intermediary.id: 2 for intermediary in platform.intermediaries}
     het_costs = {intermediary.id: (platform.dist_to_mill[intermediary.id] * 4) for intermediary in platform.intermediaries}
 
     parameters = {
@@ -61,6 +61,13 @@ def run_single_simulation(platform, graph, seed):
         "domination": False,})
 
     farmer_quantities = {f.id: f.quantity for f in platform.farmers}
+
+
+    print(" Profits ".center(TEXTWIDTH, "-"))
+    print(f"Vanilla: {summary_vanilla.max_int_welf_sol.profit}")
+    print(f"Total Fruit Value: {(np.sum(list(farmer_quantities.values())) * platform.fruit_price)}")
+    print(f"Vanilla Profit %: {summary_vanilla.max_int_welf_sol.profit / (np.sum(list(farmer_quantities.values())) * platform.fruit_price) * 100}")
+    print()
 
     return {
         "epsilon": epsilon,
@@ -111,11 +118,14 @@ def main():
     root_ss = np.random.SeedSequence(root_seed)
 
     sim_seed_sequences = root_ss.spawn(SIM_SIZE)
+
+    sampled_n_ints_idx = n_id % len(N_INTS)
+    sampled_n_ints = N_INTS[sampled_n_ints_idx]
     
     for sim_n, sim_ss in enumerate(sim_seed_sequences):
         instance_id = f'{n_id}_{sim_n}'
 
-        msg = f" Experiment {sim_n}: n_ints = {N_INTS}, instance_seed = {n_id} "
+        msg = f" Experiment {sim_n}: n_ints = {sampled_n_ints}, instance_seed = {n_id} "
         print(msg.center(TEXTWIDTH, "="))
         print()
 
@@ -126,7 +136,7 @@ def main():
         solve_seed = make_int_seed(solve_ss)
 
         msg = (
-            f" Experiment {sim_n}: n_ints = {N_INTS}, "
+            f" Experiment {sim_n}: n_ints = {sampled_n_ints}, "
             f"root_seed = {root_seed}, "
             f"gen_ints_seed = {gen_ints_seed}, "
             f"gen_instance_seed = {gen_instance_seed}"
@@ -134,7 +144,7 @@ def main():
         print(msg.center(TEXTWIDTH, "="))
         print()
 
-        instance_generator.gen_ints(N_INTS, gen_ints_seed)
+        instance_generator.gen_ints(sampled_n_ints, gen_ints_seed, set_type="high")
 
         instance_dict = instance_generator.gen_instance(
             instance_id,
@@ -164,6 +174,7 @@ def main():
             "instance_id": instance_id,
             "root_seed": root_seed,
             "sim_n": sim_n,
+            "n_ints": sampled_n_ints,
             "gen_ints_seed": gen_ints_seed,
             "gen_instance_seed": gen_instance_seed,
             "solve_seed": solve_seed,
@@ -172,7 +183,7 @@ def main():
         results.append(sim_result)
 
     # save results
-    results_path = Path(f"results/exp_4_new/{n_id}.json")
+    results_path = Path(f"results/scale_fixed_costs/{n_id}.json")
 
     results_path.parent.mkdir(parents=True, exist_ok=True)
     
